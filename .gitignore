@@ -1,0 +1,15 @@
+# Build output
+target/
+node_modules/
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store
+
+# IDE (project settings live in .vscode; everything else stays local)
+.idea/
