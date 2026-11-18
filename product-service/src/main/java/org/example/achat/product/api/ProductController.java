@@ -1,9 +1,11 @@
 package org.example.achat.product.api;
 
 import jakarta.validation.Valid;
+import org.example.achat.product.api.dto.ProductCreateRequest;
 import org.example.achat.product.api.dto.ProductRequest;
 import org.example.achat.product.api.dto.ProductResponse;
 import org.example.achat.product.application.ProductApplicationService;
+import org.example.achat.product.application.ProductCreationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,9 +24,13 @@ import java.util.List;
 public class ProductController {
 
     private final ProductApplicationService productService;
+    private final ProductCreationService creationService;
 
-    public ProductController(ProductApplicationService productService) {
+    public ProductController(
+            ProductApplicationService productService,
+            ProductCreationService creationService) {
         this.productService = productService;
+        this.creationService = creationService;
     }
 
     @GetMapping
@@ -38,8 +44,9 @@ public class ProductController {
     }
 
     @PostMapping
-    public ResponseEntity<ProductResponse> createProduct(@Valid @RequestBody ProductRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.create(request));
+    public ResponseEntity<ProductResponse> createProduct(
+            @Valid @RequestBody ProductCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(creationService.create(request));
     }
 
     @PutMapping("/{productId}")

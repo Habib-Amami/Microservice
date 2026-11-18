@@ -59,8 +59,11 @@ response body are reported).
   computes line and header totals from the catalog prices it looks up via
   Feign, and stores product snapshots. The demo dataset produces 52.50 and
   49.50 (10% discounted line).
+- Stocks are seeded before products because `POST /produits` requires a
+  `stockId`: Product Service validates it with Inventory and registers the
+  assignment in the same call.
 - Product responses expose `stockId` from a read projection: Inventory owns
   the assignment and pushes the id to Product Service after saving it. The
-  value is `null` only when no stock was assigned or the projection call
-  failed (re-assign or reseed to repair).
+  value is `null` only when an API-level unassignment happened or the
+  projection call failed (re-assign or reseed to repair).
 - Development/demo data only — never point this at a production database.

@@ -9,15 +9,22 @@ export interface Produit {
 }
 
 /**
- * Writable fields of the `Produit` entity: the stock link is not writable here.
- * Stock assignment stays owned by inventory-service and goes through
- * `PUT /produits/{id}/stock/{stockId}`; the resulting `stockId` comes back as a
- * read projection in `Produit`.
+ * Writable fields of the `Produit` entity. On update, the stock is changed
+ * separately through inventory-service's `PUT /produits/{id}/stock/{stockId}`.
  */
 export interface ProduitPayload {
   codeProduit: string;
   libelleProduit: string;
   prix: number;
+}
+
+/**
+ * Creation requires the stock the product belongs to. Product-service
+ * validates it and registers the assignment with inventory-service before it
+ * responds, so the returned `Produit` already carries the `stockId`.
+ */
+export interface ProduitCreatePayload extends ProduitPayload {
+  stockId: number;
 }
 
 /** `Produit` entity as embedded in a `DetailFacture`. */

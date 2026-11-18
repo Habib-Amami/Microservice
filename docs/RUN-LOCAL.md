@@ -216,14 +216,23 @@ A bare `GET /api` returns `404` — that is expected; routes are per resource.
 curl -s $BASE/categories-produits
 curl -s $BASE/produits
 
-# create a category, then a product in it
+# create a category, then a product in it. A product MUST be created in a
+# stock; use one of the seeded stocks (or create one in section 6.4 first).
 CID=$(curl -s -XPOST $BASE/categories-produits -H 'Content-Type: application/json' \
   -d '{"codeCategorie":"CAT-TEST","libelleCategorie":"Test category"}' | id idCategorieProduit)
 
 PID=$(curl -s -XPOST $BASE/produits -H 'Content-Type: application/json' \
-  -d "{\"codeProduit\":\"PROD-TEST\",\"libelleProduit\":\"Test product\",\"prix\":12.5,\"categorieProduitId\":$CID}" | id idProduit)
+  -d "{\"codeProduit\":\"PROD-TEST\",\"libelleProduit\":\"Test product\",\"prix\":12.5,\"categorieProduitId\":$CID,\"stockId\":1}" | id idProduit)
 
-curl -s $BASE/produits/$PID          # categorieProduitId = $CID
+curl -s $BASE/produits/$PID          # categorieProduitId = $CID, stockId = 1
+
+# creating without a stock, or with an unknown stock, is rejected
+curl -s -o /dev/null -w 'no stock -> %{http_code}\n' -XPOST $BASE/produits \
+  -H 'Content-Type: application/json' \
+  -d '{"codeProduit":"PROD-BAD","libelleProduit":"No stock","prix":1}'
+curl -s -o /dev/null -w 'unknown stock -> %{http_code}\n' -XPOST $BASE/produits \
+  -H 'Content-Type: application/json' \
+  -d '{"codeProduit":"PROD-BAD","libelleProduit":"Bad stock","prix":1,"stockId":999999}'
 curl -s -XPUT $BASE/produits/$PID -H 'Content-Type: application/json' \
   -d "{\"codeProduit\":\"PROD-TEST\",\"libelleProduit\":\"Renamed\",\"prix\":13.0,\"categorieProduitId\":$CID}"
 curl -s -o /dev/null -w 'delete product -> %{http_code}\n' -XDELETE $BASE/produits/$PID
@@ -389,7 +398,10 @@ inventory-service.
 | Config change has no effect | Config clients read at startup: restart Config Server **and** the affected services |
 | `404` on `http://localhost:8080/api` | expected; use a resource path such as `/api/produits` |
 | `404` on `/api/internal/**` | expected; service-to-service APIs are deliberately rejected at the Gateway |
-| `stockId` is `null` in product responses | no stock was ever assigned, or the projection call failed (product-service was down). Check `inventory-service` log for `stock projection was not updated`, then re-assign (`PUT /api/produits/{id}/stock/{stockId}`) or reseed |
+| `400` on `POST /produits` with "stockId" validation error | creation requires a stock; add `"stockId": <existing idStock>` to the payload |
+| `404` on `POST /produits` with "Stock not found" | the requested `stockId` does not exist; create the stock first (`POST /stocks`) |
+| `503` on `POST /produits` | inventory-service was unavailable; the product row was rolled back, so retry once it is up |
+| `stockId` is `null` in product responses | legacy/unassigned data, an API-level unassignment (`DELETE /produits/{id}/stock`), or a failed projection push. Check `inventory-service` log for `stock projection was not updated`, then re-assign (`PUT /api/produits/{id}/stock/{stockId}`) or reseed |
 | MySQL port conflict with a system server | keep `DB_PORT=3307` (default) or set another free port |
 | A component log is unreadable in the console | `scripts/run-stack.sh logs <component>` (`.run/logs/`) |
 

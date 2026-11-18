@@ -135,11 +135,17 @@ The read-side gap described here is resolved: Product Service now stores the
 (`PUT /internal/v1/products/{id}/stock`, not routed by the Gateway), so the
 form can prefill the current assignment from Product reads. The form requires
 a stock on both create and edit: no “None” option is offered, and submit is
-blocked when the field is empty. After saving, it calls
-`PUT /produits/{id}/stock/{stockId}` so Inventory remains the owner of the
-assignment. Inventory also exposes `DELETE /produits/{id}/stock` for API-level
-unassignment; the UI deliberately does not offer it because a product must
-belong to a stock.
+blocked when the field is empty.
+
+`POST /produits` enforces the same rule at the API boundary: `stockId` is a
+required field. Product Service checks the stock with Inventory (`404` if
+unknown, `503` if unavailable), saves the catalog row, and calls Inventory's
+`PUT /produits/{id}/stock/{stockId}` before responding (`201`). A failed
+assignment deletes the newly created catalog row so no stockless product is
+left behind. On edit, the form still calls that assignment route itself, since
+`PUT /produits/{id}` keeps the legacy payload. Inventory also exposes
+`DELETE /produits/{id}/stock` for API-level unassignment; the UI deliberately
+does not offer it because a product must belong to a stock.
 
 ## 9. Data migration plan
 

@@ -14,9 +14,9 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { Router, RouterLink } from '@angular/router';
-import { Observable, finalize, forkJoin, of, switchMap } from 'rxjs';
+import { finalize, forkJoin, of, switchMap } from 'rxjs';
 import { LoadState, loadState } from '../../core/api/load-state';
-import { Produit, ProduitPayload } from '../../core/models/produit.model';
+import { Produit } from '../../core/models/produit.model';
 import { Stock } from '../../core/models/stock.model';
 import { NotificationService } from '../../core/services/notification.service';
 import { ProduitService } from '../../core/services/produit.service';
@@ -136,12 +136,17 @@ export default class ProduitForm implements OnInit {
       return;
     }
     const id = this.id();
-    const { stockId, ...payload } = this.form.getRawValue();
+    const { stockId, ...fields } = this.form.getRawValue();
+    // Unreachable: Validators.required above rejects a null stock.
+    if (stockId === null) {
+      return;
+    }
     this.saving.set(true);
-    this.save(id, payload)
+    const saved$ = id ? this.api.update(Number(id), fields) : this.api.create({ ...fields, stockId });
+    saved$
       .pipe(
         switchMap((produit) =>
-          stockId !== null && stockId !== produit.stockId
+          stockId !== produit.stockId
             ? this.api.assignStock(produit.idProduit, stockId)
             : of(produit),
         ),
@@ -155,9 +160,5 @@ export default class ProduitForm implements OnInit {
         },
         error: (error: unknown) => this.notify.error(error),
       });
-  }
-
-  private save(id: string | undefined, payload: ProduitPayload): Observable<Produit> {
-    return id ? this.api.update(Number(id), payload) : this.api.create(payload);
   }
 }

@@ -1,7 +1,9 @@
 package org.example.achat.product.api;
 
+import org.example.achat.product.application.InventoryServiceUnavailableException;
 import org.example.achat.product.application.ProductCategoryNotFoundException;
 import org.example.achat.product.application.ProductNotFoundException;
+import org.example.achat.product.application.StockNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,9 +21,18 @@ public class ProductExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ProductExceptionHandler.class);
 
-    @ExceptionHandler({ProductNotFoundException.class, ProductCategoryNotFoundException.class})
+    @ExceptionHandler({
+            ProductNotFoundException.class,
+            ProductCategoryNotFoundException.class,
+            StockNotFoundException.class
+    })
     public ProblemDetail handleNotFound(RuntimeException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(InventoryServiceUnavailableException.class)
+    public ProblemDetail handleInventoryUnavailable(InventoryServiceUnavailableException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

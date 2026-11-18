@@ -223,12 +223,16 @@ create the database/account or migrate monolith data. Check
 available at `http://localhost:8082/swagger-ui.html`.
 
 Current Product Service limitations: search is not implemented; MySQL migration
-integration validation and source data transfer are still pending. Stock
-assignment is owned by Inventory Service (`PUT /api/produits/{id}/stock/{stockId}`
-is routed there); Inventory pushes the resulting `stockId` into Product
-Service's read projection, so Product responses expose it. The internal
-projection endpoint (`PUT /internal/v1/products/{id}/stock`) is deliberately
-not routed by the Gateway.
+integration validation and source data transfer are still pending. Creating a
+product requires a `stockId`: Product Service validates the stock with
+Inventory and asks Inventory to register the assignment before returning `201`,
+so no stockless product can be created through the API. Stock assignment itself
+is still owned by Inventory Service
+(`PUT /api/produits/{id}/stock/{stockId}` is routed there); Inventory pushes the
+resulting `stockId` into Product Service's read projection, so Product
+responses expose it. The internal projection endpoint
+(`PUT /internal/v1/products/{id}/stock`) is deliberately not routed by the
+Gateway.
 
 ## Seed demo data
 

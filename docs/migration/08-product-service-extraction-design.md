@@ -298,6 +298,12 @@ There are no product query parameters in the current controller. Product API
 response includes a nullable `stockId`; its target source is an unresolved
 cross-service compatibility concern, described in Section 5.
 
+**Current implementation note:** the table above characterizes the legacy API.
+The extracted Product Service now requires `stockId` on `POST /produits` and
+validates/registers it with Inventory before returning 201; `categorieProduitId`
+is also honored on create. Update payloads still ignore `stockId`, and stock
+changes continue through Inventory's assignment route.
+
 ### Category endpoints
 
 Request body:

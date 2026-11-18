@@ -40,6 +40,14 @@ Category CRUD routes under `/categories-produits`. Search is deferred because
 the legacy API has no search contract. Product price remains `float` pending
 Finance approval. Product codes are not unique-constrained.
 
+`POST /produits` requires a `stockId`: a product cannot be created without a
+stock. The service checks the stock with Inventory Service (`404` if unknown,
+`503` if Inventory is unreachable), saves the catalog row, then asks Inventory
+to register the assignment through its legacy
+`PUT /produits/{productId}/stock/{stockId}` route. If that call fails, the new
+catalog row is deleted so no stockless product is left behind (`503`). The
+response already carries the assigned `stockId`.
+
 Product responses expose the legacy `stockId` field as a read projection:
 Inventory owns the assignment and pushes the id to
 `PUT /internal/v1/products/{id}/stock` after saving it. That internal route is

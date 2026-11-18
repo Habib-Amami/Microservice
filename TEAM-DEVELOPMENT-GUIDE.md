@@ -131,7 +131,7 @@ Testcontainers/MySQL integration test has not completed in this environment.
 
 | Service | Responsibilities and owned data | Legacy entities / likely legacy tables | Public API responsibility | External IDs and dependencies | Explicit exclusions |
 |---|---|---|---|---|---|
-| **Product** (`product-service`) | Product catalog, categories, validation, current catalog price. | `Produit` / likely `produit`; `CategorieProduit` / likely `categorie_produit`. New target migration declares `products` and `product_categories`. | Product and Category CRUD only; `stockId` remains null and stock assignment is routed to Inventory. | Product IDs are consumed by Inventory and Procurement. Procurement needs an agreed catalog/price snapshot contract. | Stock quantities, stock/location assignment, reservations, movements, suppliers, invoices, settlements. No JPA link to Inventory. |
+| **Product** (`product-service`) | Product catalog, categories, validation, current catalog price. | `Produit` / likely `produit`; `CategorieProduit` / likely `categorie_produit`. New target migration declares `products` and `product_categories`. | Product and Category CRUD; creation requires `stockId` and registers the assignment with Inventory before responding, so `stockId` is populated on reads. | Product IDs are consumed by Inventory and Procurement. Procurement needs an agreed catalog/price snapshot contract. | Stock quantities, stock/location assignment, reservations, movements, suppliers, invoices, settlements. No JPA link to Inventory. |
 | **Inventory** (`inventory-service`) | Current implementation covers stock CRUD and product assignment; broader positions/movements/reservations/receipts are incomplete. | `Stock` / likely `stock`; new target migration is service-owned. Deployed source model does not prove a per-product quantity model. | Implements legacy `/stocks/**` and Product stock-assignment operation. | Uses Product IDs as values and calls Product through Feign. Procurement receipt/adjustment remains conditional on approval. | Product metadata/pricing, supplier master, invoices, user credentials, settlements. |
 | **Supplier** (`supplier-service`) | Supplier master, details, sectors, and membership. | New target tables: `suppliers`, `supplier_details`, `activity_sectors`, and `supplier_activity_sectors`. | Implements `/fournisseurs/**`, `/secteurs-activite/**`, sector assignment, and `/internal/v1/suppliers/{id}`. | Procurement validates Supplier references through Feign. | Invoices, invoice lines, operators, stock, settlements, performance projections. |
 | **User** (`user-service`) | Operator profile data and encoded credential storage; authentication, roles, and permissions are not yet implemented. | New `operators` table; no source auth/role tables verified. Invoice assignments are Procurement-owned. | Implements `/operateurs/**` and `/internal/v1/operators/{id}`; `factureIds` remains present and empty. | Procurement validates operator references through Feign. No JWT or request authorization is active. | Invoice ownership/workflow, business records, product/inventory/supplier data, settlement history. |
@@ -528,12 +528,12 @@ and test each compatibility decision.
 
 ### Product-specific implementation status
 
-The standalone Product Service currently implements Product and Category
-CRUD (10 routes). It does not implement search or legacy stock assignment;
-`stockId` is returned as `null`, and Inventory owns the assignment route. The
-explicit Product/Category Gateway routes are configured, but neither a live
-route check nor source data parity/rollback acceptance has been performed.
-Do not declare Product migration/cutover complete until those gates pass.
+The standalone Product Service implements Product and Category CRUD. It does
+not implement search, but product creation now requires a `stockId`: Product
+validates the stock with Inventory, creates the catalog row, and asks Inventory
+to register the assignment before responding, so `stockId` is populated on
+reads. Inventory still owns the assignment route and the read projection is
+best-effort. Source data parity/rollback acceptance remains a cutover gate.
 
 ## 8. Security and secrets
 

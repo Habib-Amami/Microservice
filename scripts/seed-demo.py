@@ -177,7 +177,7 @@ def seed_operators(api):
     return operators
 
 
-def seed_products(api):
+def seed_products(api, stocks):
     categories = {}
     for category in load("product", "categories.json"):
         created = api.post("/categories-produits", {
@@ -186,8 +186,20 @@ def seed_products(api):
         })
         categories[category["code"]] = created.get("idCategorieProduit")
 
+    assignments = {}
+    for assignment in load("inventory", "assignments.json"):
+        stock_id = stocks.get(assignment["stockLabel"])
+        if stock_id is None and not api.dry_run:
+            raise SeedError(f"No stock id for {assignment['stockLabel']}")
+        assignments[assignment["productCode"]] = stock_id
+
+    # A product must be created in a stock: product-service validates the stock
+    # and asks inventory-service to register the assignment in the same call.
     products = {}
     for product in load("product", "products.json"):
+        stock_id = assignments.get(product["code"])
+        if stock_id is None and not api.dry_run:
+            raise SeedError(f"No stock assignment for {product['code']}")
         created = api.post("/produits", {
             "codeProduit": product["code"],
             "libelleProduit": product["label"],
@@ -195,12 +207,13 @@ def seed_products(api):
             "dateCreation": None,
             "dateDerniereModification": None,
             "categorieProduitId": categories.get(product.get("categoryCode")),
+            "stockId": stock_id,
         })
         products[product["code"]] = created.get("idProduit")
     return products
 
 
-def seed_stocks(api, products):
+def seed_stocks(api):
     stocks = {}
     for stock in load("inventory", "stocks.json"):
         created = api.post("/stocks", {
@@ -209,14 +222,6 @@ def seed_stocks(api, products):
             "qteMin": stock["minimumQuantity"],
         })
         stocks[stock["label"]] = created.get("idStock")
-
-    # Assign products to stocks through the inventory legacy compatibility route.
-    for assignment in load("inventory", "assignments.json"):
-        product_id = products.get(assignment["productCode"])
-        stock_id = stocks.get(assignment["stockLabel"])
-        if api.dry_run or (product_id and stock_id):
-            api.put(f"/produits/{ref(product_id, 'productId')}"
-                    f"/stock/{ref(stock_id, 'stockId')}")
     return stocks
 
 
@@ -284,10 +289,10 @@ def main():
         suppliers = seed_suppliers(api)
         print("2/6 user: operators ...")
         seed_operators(api)
-        print("3/6 product: categories and products ...")
-        products = seed_products(api)
-        print("4/6 inventory: stocks and product assignments ...")
-        stocks = seed_stocks(api, products)
+        print("3/6 inventory: stocks ...")
+        stocks = seed_stocks(api)
+        print("4/6 product: categories and products in their stocks ...")
+        products = seed_products(api, stocks)
         print("5/6 procurement: invoices (amounts computed by the service) ...")
         invoices = seed_invoices(api, suppliers, products)
         print("6/6 payment: settlements ...")

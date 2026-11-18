@@ -4,7 +4,9 @@ import org.example.achat.product.api.dto.ProductCategoryResponse;
 import org.example.achat.product.api.dto.ProductResponse;
 import org.example.achat.product.application.ProductApplicationService;
 import org.example.achat.product.application.ProductCategoryApplicationService;
+import org.example.achat.product.application.ProductCreationService;
 import org.example.achat.product.application.ProductNotFoundException;
+import org.example.achat.product.application.StockNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,6 +34,7 @@ class ProductApiContractTest {
     private final ProductApplicationService productService = mock(ProductApplicationService.class);
     private final ProductCategoryApplicationService categoryService =
             mock(ProductCategoryApplicationService.class);
+    private final ProductCreationService creationService = mock(ProductCreationService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -39,7 +42,7 @@ class ProductApiContractTest {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = standaloneSetup(
-                new ProductController(productService),
+                new ProductController(productService, creationService),
                 new ProductCategoryController(categoryService),
                 new InternalProductController(productService))
                 .setControllerAdvice(new ProductExceptionHandler())
@@ -62,18 +65,46 @@ class ProductApiContractTest {
     }
 
     @Test
-    void createsProductAndPreservesLegacyCreatedStatus() throws Exception {
-        when(productService.create(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(new ProductResponse(8L, "P-8", "Pen", 1.25f, null, null));
+    void createsProductInAStockAndPreservesLegacyCreatedStatus() throws Exception {
+        when(creationService.create(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new ProductResponse(8L, "P-8", "Pen", 1.25f, 3L, null));
 
         mockMvc.perform(post("/produits")
                         .contentType("application/json")
                         .content("""
-                                {"codeProduit":"P-8","libelleProduit":"Pen","prix":1.25}
+                                {"codeProduit":"P-8","libelleProduit":"Pen","prix":1.25,"stockId":3}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.idProduit").value(8))
-                .andExpect(content().string(containsString("\"stockId\":null")));
+                .andExpect(jsonPath("$.stockId").value(3));
+    }
+
+    @Test
+    void rejectsProductCreationWithoutAStock() throws Exception {
+        mockMvc.perform(post("/produits")
+                        .contentType("application/json")
+                        .content("""
+                                {"codeProduit":"P-9","libelleProduit":"Pen","prix":1}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Request validation failed"))
+                .andExpect(jsonPath("$.errors[?(@.field == 'stockId')]").exists());
+
+        org.mockito.Mockito.verifyNoInteractions(creationService);
+    }
+
+    @Test
+    void mapsUnknownStockDuringCreationToNotFound() throws Exception {
+        when(creationService.create(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new StockNotFoundException(404L));
+
+        mockMvc.perform(post("/produits")
+                        .contentType("application/json")
+                        .content("""
+                                {"codeProduit":"P-9","libelleProduit":"Pen","prix":1,"stockId":404}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Stock not found with id: 404"));
     }
 
     @Test
@@ -81,7 +112,7 @@ class ProductApiContractTest {
         mockMvc.perform(post("/produits")
                         .contentType("application/json")
                         .content("""
-                                {"codeProduit":" ","libelleProduit":"Pen","prix":1}
+                                {"codeProduit":" ","libelleProduit":"Pen","prix":1,"stockId":3}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("Request validation failed"));
@@ -92,7 +123,7 @@ class ProductApiContractTest {
         mockMvc.perform(post("/produits")
                         .contentType("application/json")
                         .content("""
-                                {"codeProduit":"P-9","libelleProduit":"Pen","prix":-0.01}
+                                {"codeProduit":"P-9","libelleProduit":"Pen","prix":-0.01,"stockId":3}
                                 """))
                 .andExpect(status().isBadRequest());
     }

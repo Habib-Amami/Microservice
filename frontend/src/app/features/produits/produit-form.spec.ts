@@ -17,7 +17,7 @@ describe('ProduitForm', () => {
     codeProduit: 'P-1',
     libelleProduit: 'Product',
     prix: 1,
-    stockId: null,
+    stockId: 1,
     categorieProduitId: null,
   };
 
@@ -73,7 +73,7 @@ describe('ProduitForm', () => {
     expect(form.valid).toBe(true);
   });
 
-  it('assigns the selected stock right after creating the product', () => {
+  it('sends the required stock in the create payload', () => {
     const { form, submit, produitService } = setup();
 
     form.setValue({ codeProduit: 'P-1', libelleProduit: 'Product', prix: 1, stockId: 1 });
@@ -83,7 +83,9 @@ describe('ProduitForm', () => {
       codeProduit: 'P-1',
       libelleProduit: 'Product',
       prix: 1,
+      stockId: 1,
     });
-    expect(produitService.assignStock).toHaveBeenCalledWith(9, 1);
+    // Creation now assigns the stock server-side; no second call is needed.
+    expect(produitService.assignStock).not.toHaveBeenCalled();
   });
 });
