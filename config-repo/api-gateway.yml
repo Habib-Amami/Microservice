@@ -27,6 +27,15 @@ spring:
               filters:
                 - StripPrefix=1
 
+            - id: inventory-product-stock-unassignment
+              order: -2
+              uri: lb://INVENTORY-SERVICE
+              predicates:
+                - Path=/api/produits/*/stock
+                - Method=DELETE
+              filters:
+                - StripPrefix=1
+
             # Product Service routes
             - id: product-service
               order: -1
@@ -94,6 +103,17 @@ spring:
                 - Path=/api/reglements/**
               filters:
                 - StripPrefix=1
+
+            # Service-to-service APIs are never part of the public /api surface.
+            # Without this route they fall through to the monolith fallback and
+            # appear as 500 when the fallback is not running.
+            - id: reject-internal-api
+              order: -10
+              uri: no://op
+              predicates:
+                - Path=/api/internal/**
+              filters:
+                - SetStatus=404
 
             # Monolith fallback
             - id: monolith-fallback

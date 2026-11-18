@@ -101,10 +101,10 @@ public class InvoiceCommandService {
     }
 
     public void cancel(Long id) {
-        repository.findById(id).ifPresent(invoice -> {
-            invoice.setArchivee(true);
-            repository.save(invoice);
-        });
+        Invoice invoice = repository.findById(id)
+                .orElseThrow(() -> new InvoiceNotFoundException(id));
+        invoice.setArchivee(true);
+        repository.save(invoice);
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

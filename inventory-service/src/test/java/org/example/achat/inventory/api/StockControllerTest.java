@@ -107,6 +107,18 @@ class StockControllerTest {
     }
 
     @Test
+    void unassignsProductFromStock() throws Exception {
+        when(stockService.unassignProduct(11L))
+                .thenReturn(new ProductResponse(11L, "P-11", "Paper", 2.5f, null, 4L));
+
+        mockMvc.perform(delete("/produits/11/stock"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stockId").value(org.hamcrest.Matchers.nullValue()));
+
+        verify(stockService).unassignProduct(11L);
+    }
+
+    @Test
     void mapsMissingProductAndUnavailableProductService() throws Exception {
         when(stockService.assignProduct(404L, 3L))
                 .thenThrow(new ProductNotFoundException(404L));

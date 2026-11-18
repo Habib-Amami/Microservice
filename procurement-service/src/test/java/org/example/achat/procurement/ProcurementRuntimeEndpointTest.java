@@ -97,6 +97,7 @@ class ProcurementRuntimeEndpointTest {
         assertThat(request("PUT", "/facture/cancel-facture/" + invoiceId, null).statusCode()).isEqualTo(200);
         assertThat(request("GET", "/facture/retrieve-facture/" + invoiceId, null)
                 .body()).contains("\"archivee\":true");
+        assertThat(request("PUT", "/facture/cancel-facture/999999", null).statusCode()).isEqualTo(404);
         assertThat(request("GET", "/internal/v1/invoices/" + invoiceId + "/payment-eligibility", null)
                 .body()).contains("\"eligible\":false", "\"reasonCode\":\"INVOICE_ARCHIVED\"");
     }

@@ -83,8 +83,16 @@ public class StockService {
         if (!stockRepository.existsById(stockId)) {
             throw new StockNotFoundException(stockId);
         }
-        if (assignmentRepository.existsByStock_IdStock(stockId)) {
-            throw new StockInUseException(stockId);
+        List<StockProductAssignment> assignments = assignmentRepository.findByStock_IdStock(stockId);
+        if (!assignments.isEmpty()) {
+            // Product Service owns product deletion. If a product is gone, its
+            // assignment row is stale and must not block deletion of the stock.
+            for (StockProductAssignment assignment : assignments) {
+                if (productExists(assignment.getProductId())) {
+                    throw new StockInUseException(stockId);
+                }
+            }
+            assignmentRepository.deleteAll(assignments);
         }
         stockRepository.deleteById(stockId);
     }
@@ -104,6 +112,32 @@ public class StockService {
         projectStockAssignment(productId, stockId);
 
         return product.withStockId(stockId);
+    }
+
+    /**
+     * Removes a product's stock assignment and clears the read projection.
+     * Idempotent: unassigning a product that has no stock still refreshes the
+     * projection, which repairs a previously failed push.
+     */
+    @Transactional
+    public ProductResponse unassignProduct(Long productId) {
+        ProductResponse product = findProduct(productId);
+        StockProductAssignment assignment = assignmentRepository.findFirstByProductId(productId);
+        if (assignment != null) {
+            assignmentRepository.delete(assignment);
+        }
+        projectStockAssignment(productId, null);
+        return product.withStockId(null);
+    }
+
+    private boolean productExists(Long productId) {
+        try {
+            return productClient.getProduct(productId) != null;
+        } catch (FeignException.NotFound exception) {
+            return false;
+        } catch (FeignException exception) {
+            throw new ProductServiceUnavailableException(exception);
+        }
     }
 
     /**

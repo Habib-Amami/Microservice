@@ -260,6 +260,10 @@ STID=$(curl -s -XPOST $BASE/stocks -H 'Content-Type: application/json' \
 # legacy compatibility route, owned by inventory-service
 curl -s -XPUT $BASE/produits/1/stock/$STID
 curl -s $BASE/stocks/$STID
+
+# unassign (the UI's "None" choice) — clears the projection too
+curl -s -XDELETE $BASE/produits/1/stock
+curl -s $BASE/produits/1        # "stockId": null
 ```
 
 The assignment is owned by inventory-service (`stock_product_assignments`),
@@ -273,6 +277,11 @@ curl -s $BASE/produits/1        # {"idProduit":1,...,"stockId":<idStock>,...}
 The projection is best-effort: if product-service is down during an
 assignment, the assignment is still saved in inventory and a warning is
 logged. Re-assign the product (or reseed) to repair it.
+
+Assignments are owned by inventory. Product deletion happens in
+product-service, so a deleted product can leave a stale assignment; inventory
+detects that on stock deletion, removes the stale rows, and lets the stock be
+deleted. A stock with a live assigned product still returns `409`.
 
 ### 6.5 Invoices (procurement-service)
 
@@ -300,6 +309,10 @@ CID=$(curl -s -XPOST $BASE/facture/add-facture -H 'Content-Type: application/jso
   | id idFacture)
 curl -s -o /dev/null -w 'cancel -> %{http_code}\n' -XPUT $BASE/facture/cancel-facture/$CID
 curl -s $BASE/facture/retrieve-facture/$CID     # "archivee": true
+
+# cancelling an unknown invoice is a 404, not a silent no-op
+curl -s -o /dev/null -w 'cancel unknown -> %{http_code}\n' \
+  -XPUT $BASE/facture/cancel-facture/999999
 ```
 
 Checks worth doing:
@@ -307,7 +320,7 @@ Checks worth doing:
 - 3 × paper (5.50) with 10 % discount → `montantFacture` = `14.85`.
 - Each line stores a product **snapshot** (`codeProduit`, `libelleProduit`,
   `prix`), so later catalog edits never rewrite history.
-- Unknown product → `400`; missing quantity → `400`.
+- Unknown product → `404`; missing quantity → `400`.
 
 ### 6.6 Settlements and reporting (payment-service)
 
@@ -374,6 +387,7 @@ inventory-service.
 | Service starts, then exits asking for config | same — Config Server must be up before any client |
 | Config change has no effect | Config clients read at startup: restart Config Server **and** the affected services |
 | `404` on `http://localhost:8080/api` | expected; use a resource path such as `/api/produits` |
+| `404` on `/api/internal/**` | expected; service-to-service APIs are deliberately rejected at the Gateway |
 | `stockId` is `null` in product responses | no stock was ever assigned, or the projection call failed (product-service was down). Check `inventory-service` log for `stock projection was not updated`, then re-assign (`PUT /api/produits/{id}/stock/{stockId}`) or reseed |
 | MySQL port conflict with a system server | keep `DB_PORT=3307` (default) or set another free port |
 | A component log is unreadable in the console | `scripts/run-stack.sh logs <component>` (`.run/logs/`) |

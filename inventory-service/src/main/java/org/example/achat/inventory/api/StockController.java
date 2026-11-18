@@ -64,6 +64,11 @@ public class StockController {
         return stockService.assignProduct(productId, stockId);
     }
 
+    @DeleteMapping("/produits/{productId}/stock")
+    public ProductResponse unassignProductFromStock(@PathVariable Long productId) {
+        return stockService.unassignProduct(productId);
+    }
+
     private StockResponse toResponse(Stock stock) {
         return new StockResponse(
                 stock.getIdStock(),

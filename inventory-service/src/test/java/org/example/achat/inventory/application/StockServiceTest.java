@@ -146,11 +146,95 @@ class StockServiceTest {
     @Test
     void deletesStockWithoutAssignments() {
         when(stockRepository.existsById(7L)).thenReturn(true);
-        when(assignmentRepository.existsByStock_IdStock(7L)).thenReturn(false);
+        when(assignmentRepository.findByStock_IdStock(7L)).thenReturn(List.of());
 
         stockService.delete(7L);
 
         verify(stockRepository).deleteById(7L);
+    }
+
+    @Test
+    void refusesToDeleteStockWhileALiveProductIsAssigned() {
+        Stock stock = stock(7L, "Main warehouse", 20, 5);
+        StockProductAssignment assignment = assignment(11L, stock);
+        when(stockRepository.existsById(7L)).thenReturn(true);
+        when(assignmentRepository.findByStock_IdStock(7L)).thenReturn(List.of(assignment));
+        when(productClient.getProduct(11L))
+                .thenReturn(new ProductResponse(11L, "P-11", "Paper", 2.5f, 7L, 4L));
+
+        assertThatThrownBy(() -> stockService.delete(7L))
+                .isInstanceOf(StockInUseException.class);
+
+        verify(assignmentRepository, never()).deleteAll(any());
+        verify(stockRepository, never()).deleteById(7L);
+    }
+
+    @Test
+    void dropsStaleAssignmentsWhenProductWasDeleted() {
+        Stock stock = stock(7L, "Main warehouse", 20, 5);
+        StockProductAssignment assignment = assignment(11L, stock);
+        when(stockRepository.existsById(7L)).thenReturn(true);
+        when(assignmentRepository.findByStock_IdStock(7L)).thenReturn(List.of(assignment));
+        when(productClient.getProduct(11L)).thenThrow(productNotFound(11L));
+
+        stockService.delete(7L);
+
+        verify(assignmentRepository).deleteAll(List.of(assignment));
+        verify(stockRepository).deleteById(7L);
+    }
+
+    @Test
+    void doesNotDeleteStockWhenProductServiceIsUnavailable() {
+        Stock stock = stock(7L, "Main warehouse", 20, 5);
+        StockProductAssignment assignment = assignment(11L, stock);
+        when(stockRepository.existsById(7L)).thenReturn(true);
+        when(assignmentRepository.findByStock_IdStock(7L)).thenReturn(List.of(assignment));
+        when(productClient.getProduct(11L)).thenThrow(
+                FeignException.errorStatus("getProduct", response(503)));
+
+        assertThatThrownBy(() -> stockService.delete(7L))
+                .isInstanceOf(ProductServiceUnavailableException.class);
+
+        verify(assignmentRepository, never()).deleteAll(any());
+        verify(stockRepository, never()).deleteById(7L);
+    }
+
+    @Test
+    void unassignsProductAndClearsProjection() {
+        Stock stock = stock(7L, "Main warehouse", 20, 5);
+        ProductResponse product = new ProductResponse(11L, "P-11", "Paper", 2.5f, 7L, 4L);
+        StockProductAssignment assignment = assignment(11L, stock);
+        when(productClient.getProduct(11L)).thenReturn(product);
+        when(assignmentRepository.findFirstByProductId(11L)).thenReturn(assignment);
+
+        ProductResponse unassigned = stockService.unassignProduct(11L);
+
+        assertThat(unassigned.stockId()).isNull();
+        verify(assignmentRepository).delete(assignment);
+        verify(projectionClient).assignStock(11L, new StockAssignmentRequest(null));
+    }
+
+    @Test
+    void unassigningWithoutAssignmentStillRefreshesProjection() {
+        ProductResponse product = new ProductResponse(11L, "P-11", "Paper", 2.5f, null, 4L);
+        when(productClient.getProduct(11L)).thenReturn(product);
+        when(assignmentRepository.findFirstByProductId(11L)).thenReturn(null);
+
+        ProductResponse unassigned = stockService.unassignProduct(11L);
+
+        assertThat(unassigned.stockId()).isNull();
+        verify(assignmentRepository, never()).delete(any(StockProductAssignment.class));
+        verify(projectionClient).assignStock(11L, new StockAssignmentRequest(null));
+    }
+
+    @Test
+    void rejectsUnassignForMissingProduct() {
+        when(productClient.getProduct(404L)).thenThrow(productNotFound(404L));
+
+        assertThatThrownBy(() -> stockService.unassignProduct(404L))
+                .isInstanceOf(ProductNotFoundException.class);
+
+        verify(projectionClient, never()).assignStock(any(), any());
     }
 
     @Test
@@ -171,6 +255,13 @@ class StockServiceTest {
         stock.setQte(quantity);
         stock.setQteMin(minimum);
         return stock;
+    }
+
+    private static StockProductAssignment assignment(Long productId, Stock stock) {
+        StockProductAssignment assignment = new StockProductAssignment();
+        assignment.setProductId(productId);
+        assignment.setStock(stock);
+        return assignment;
     }
 
     private static FeignException productNotFound(Long productId) {
