@@ -21,6 +21,14 @@ customer e-commerce application.
 > scripts/run-stack.sh reset     # wipe and seed the demo dataset
 > scripts/run-stack.sh status    # per-component health
 > ```
+>
+> **One-command demo with GUI, tracing, metrics and logs:** [docs/DOCKER-COMPOSE.md](docs/DOCKER-COMPOSE.md)
+>
+> ```bash
+> scripts/compose-stack.sh up      # everything, including Grafana + Jaeger + Loki
+> scripts/compose-stack.sh seed    # canonical demo dataset
+> scripts/compose-stack.sh urls    # all UI URLs
+> ```
 
 ## Applications and local ports
 
@@ -90,6 +98,30 @@ The essential order is:
 Check that `curl http://localhost:8080/api/produits` returns `200` before using
 the UI. Both the Gateway and the Angular proxy preserve `/api`; the Gateway
 removes it exactly once when forwarding to a service.
+
+## Docker Compose: full stack + observability
+
+For a complete demo, [docs/DOCKER-COMPOSE.md](docs/DOCKER-COMPOSE.md) describes
+the additive Compose stack: MySQL, Config Server, Eureka, Gateway, six services,
+the Angular UI, **Jaeger** (distributed tracing), **Prometheus + Grafana**
+(metrics dashboard) and **Loki + Promtail** (logs). SonarQube and Nexus are
+available behind the `quality` profile, with `scripts/sonar-scan.sh` and
+`scripts/publish-nexus.sh` for analysis and snapshot publishing.
+
+```bash
+scripts/run-stack.sh stop                 # free the ports used by the host flow
+docker stop stack-mysql 2>/dev/null || true
+scripts/compose-stack.sh up               # build and start all default services
+scripts/compose-stack.sh seed             # load the demo dataset
+scripts/compose-stack.sh quality          # optional: SonarQube + Nexus
+scripts/compose-stack.sh status
+scripts/compose-stack.sh urls
+```
+
+Demo UIs: Angular `http://localhost:4200`, Eureka `:8761`, Grafana `:3000`,
+Jaeger `:16686`, Prometheus `:9090`, SonarQube `:9000` and Nexus `:8081`.
+Grafana and SonarQube default to `admin`/`admin`; see the runbook for Nexus
+first-login instructions and for generating a SonarQube token.
 
 ## Start Product Service
 
@@ -179,16 +211,18 @@ does not verify database migrations or service startup.
 | Maven cannot resolve dependencies | Check Java 21, network access to Maven Central, then rerun the wrapper command from the project's folder. |
 | Angular port is occupied | Stop the other dev server or use `npm start -- --port 4300`. |
 
-Host-local `localhost` defaults are not valid between containers. No Docker
-network or production deployment is provided by this repository. Do not
-expose Config Server, Eureka, Gateway, actuator endpoints, or development
-databases publicly; production security and deployment configuration require
-separate approval.
+Host-local `localhost` defaults are not valid between containers: the Compose
+stack overrides them with container DNS names (`mysql`, `config-server`, `api-gateway`,
+…). All of the Docker material here is for **local demos only**. Do not expose
+Config Server, Eureka, Gateway, actuator endpoints, or development databases
+publicly; production security and deployment configuration require separate
+approval.
 
 ## More detailed documentation
 
 - [Team development guide](TEAM-DEVELOPMENT-GUIDE.md)
 - [Local run and test runbook](docs/RUN-LOCAL.md)
+- [Docker Compose demo stack, observability, SonarQube and Nexus](docs/DOCKER-COMPOSE.md)
 - [Microservices implementation status](docs/MICROSERVICES-IMPLEMENTATION-STATUS.md)
 - [Infrastructure startup and Gateway details](infrastructure/README.md)
 - [Angular setup and troubleshooting](frontend/README.md)

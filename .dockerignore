@@ -1,0 +1,13 @@
+# Keep the Compose build context small and reproducible.
+.git
+.gitignore
+.vscode
+.run
+docs
+**/target
+**/node_modules
+frontend/dist
+frontend/.angular
+**/*.log
+.env
+.env.*
