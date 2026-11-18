@@ -4,6 +4,7 @@ import org.example.achat.product.api.dto.ProductRequest;
 import org.example.achat.product.api.dto.ProductResponse;
 import org.example.achat.product.domain.Product;
 import org.example.achat.product.domain.ProductCategory;
+import org.example.achat.product.infrastructure.persistence.ProductCategoryRepository;
 import org.example.achat.product.infrastructure.persistence.ProductRepository;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +20,9 @@ import static org.mockito.Mockito.when;
 class ProductApplicationServiceTest {
 
     private final ProductRepository repository = mock(ProductRepository.class);
-    private final ProductApplicationService service = new ProductApplicationService(repository);
+    private final ProductCategoryRepository categoryRepository = mock(ProductCategoryRepository.class);
+    private final ProductApplicationService service =
+            new ProductApplicationService(repository, categoryRepository);
 
     @Test
     void updatePreservesCreationDateAndCategoryWhileUpdatingLegacyFields() {
@@ -35,7 +38,7 @@ class ProductApplicationServiceTest {
         when(repository.save(existing)).thenReturn(existing);
 
         ProductResponse response = service.update(
-                7L, new ProductRequest("P-7", "Updated", 8.5f, LocalDate.of(2026, 1, 1), modified));
+                7L, new ProductRequest("P-7", "Updated", 8.5f, LocalDate.of(2026, 1, 1), modified, null));
 
         assertThat(response.idProduit()).isEqualTo(7L);
         assertThat(response.prix()).isEqualTo(8.5f);
@@ -53,5 +56,28 @@ class ProductApplicationServiceTest {
         assertThatThrownBy(() -> service.findById(404L))
                 .isInstanceOf(ProductNotFoundException.class)
                 .hasMessage("Produit not found with id: 404");
+    }
+
+    @Test
+    void createAssignsCategoryWhenProvided() {
+        ProductCategory category = new ProductCategory();
+        category.setIdCategorieProduit(3L);
+        when(categoryRepository.findById(3L)).thenReturn(Optional.of(category));
+        when(repository.save(org.mockito.ArgumentMatchers.any(Product.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProductResponse response = service.create(
+                new ProductRequest("P-3", "Categorised", 4.0f, LocalDate.of(2026, 1, 1), null, 3L));
+
+        assertThat(response.categorieProduitId()).isEqualTo(3L);
+    }
+
+    @Test
+    void createRejectsUnknownCategory() {
+        when(categoryRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(
+                new ProductRequest("P-99", "No category", 1.0f, LocalDate.of(2026, 1, 1), null, 99L)))
+                .isInstanceOf(ProductCategoryNotFoundException.class);
     }
 }

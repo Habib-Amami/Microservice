@@ -3,6 +3,8 @@ package org.example.achat.product.application;
 import org.example.achat.product.api.dto.ProductRequest;
 import org.example.achat.product.api.dto.ProductResponse;
 import org.example.achat.product.domain.Product;
+import org.example.achat.product.domain.ProductCategory;
+import org.example.achat.product.infrastructure.persistence.ProductCategoryRepository;
 import org.example.achat.product.infrastructure.persistence.ProductRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,9 +15,13 @@ import java.util.List;
 public class ProductApplicationService {
 
     private final ProductRepository productRepository;
+    private final ProductCategoryRepository categoryRepository;
 
-    public ProductApplicationService(ProductRepository productRepository) {
+    public ProductApplicationService(
+            ProductRepository productRepository,
+            ProductCategoryRepository categoryRepository) {
         this.productRepository = productRepository;
+        this.categoryRepository = categoryRepository;
     }
 
     @Transactional(readOnly = true)
@@ -42,6 +48,11 @@ public class ProductApplicationService {
         product.setLibelleProduit(request.libelleProduit());
         product.setPrix(request.prix());
         product.setDateDerniereModification(request.dateDerniereModification());
+        // A missing category in the request keeps the current assignment, so
+        // legacy update payloads cannot silently detach products.
+        if (request.categorieProduitId() != null) {
+            product.setCategorieProduit(findCategory(request.categorieProduitId()));
+        }
         return toResponse(productRepository.save(product));
     }
 
@@ -64,6 +75,14 @@ public class ProductApplicationService {
         product.setPrix(request.prix());
         product.setDateCreation(request.dateCreation());
         product.setDateDerniereModification(request.dateDerniereModification());
+        if (request.categorieProduitId() != null) {
+            product.setCategorieProduit(findCategory(request.categorieProduitId()));
+        }
+    }
+
+    private ProductCategory findCategory(Long categoryId) {
+        return categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new ProductCategoryNotFoundException(categoryId));
     }
 
     private ProductResponse toResponse(Product product) {

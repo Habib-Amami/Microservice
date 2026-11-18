@@ -218,6 +218,18 @@ the current `/api/produits/**` Gateway route also matches the stock-assignment
 path, that UI operation is sent to Product Service and will fail until an
 approved Inventory/compatibility route is added and tested.
 
+## Seed demo data
+
+With the full stack running and empty service databases, populate the demo
+dataset through the Gateway (suppliers → operators → products → stocks →
+invoices → settlements):
+
+```bash
+python3 scripts/seed-demo.py            # add --dry-run to preview
+```
+
+See [scripts/README.md](scripts/README.md) for details.
+
 ## Build and test
 
 Run each project's independent verification from its own folder:
