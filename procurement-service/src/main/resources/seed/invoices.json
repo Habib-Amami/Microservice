@@ -1,0 +1,17 @@
+[
+  {
+    "supplierCode": "SUP-TECH",
+    "date": "2025-01-10",
+    "details": [
+      {"productCode": "PROD-MOUSE", "quantity": 1, "discountPercentage": 0},
+      {"productCode": "PROD-PAPER", "quantity": 5, "discountPercentage": 0}
+    ]
+  },
+  {
+    "supplierCode": "SUP-OFFICE",
+    "date": "2025-02-05",
+    "details": [
+      {"productCode": "PROD-PAPER", "quantity": 10, "discountPercentage": 10}
+    ]
+  }
+]

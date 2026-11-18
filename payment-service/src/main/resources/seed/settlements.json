@@ -1,0 +1,16 @@
+[
+  {
+    "invoice": {"supplierCode": "SUP-TECH", "date": "2025-01-10"},
+    "paid": 52.5,
+    "remaining": 0,
+    "paidStatus": true,
+    "date": "2025-01-15"
+  },
+  {
+    "invoice": {"supplierCode": "SUP-OFFICE", "date": "2025-02-05"},
+    "paid": 35.0,
+    "remaining": 14.5,
+    "paidStatus": false,
+    "date": "2025-02-10"
+  }
+]

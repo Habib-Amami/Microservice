@@ -13,3 +13,7 @@ node_modules/
 
 # IDE (project settings live in .vscode; everything else stays local)
 .idea/
+
+# Python
+__pycache__/
+*.pyc

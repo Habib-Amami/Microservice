@@ -1,19 +1,41 @@
 # Demo data seeding
 
-`seed-demo.py` populates a running microservice stack with the demo dataset
-that the monolith previously loaded from `backend/src/main/resources/seed/`.
-The canonical copy of that dataset now lives in [`seed-data/`](seed-data/), so
-it survives the monolith's retirement.
+Each service owns its demo dataset in `src/main/resources/seed/` — the same
+layout the monolith used. `seed-demo.py` is a thin orchestrator: it reads
+those files, calls the owning service through the API Gateway in dependency
+order, and resolves business codes to the IDs each service returns.
 
-Every record is created through the API Gateway, so it passes through the
-owning service's validation and business logic (including invoice amount
-calculation and product snapshots in Procurement).
+| Service | Seed files | Owns |
+|---|---|---|
+| supplier-service | `sectors.json`, `suppliers.json` | activity sectors, suppliers, sector assignments |
+| user-service | `operators.json` | operator profiles |
+| product-service | `categories.json`, `products.json` | product categories, products |
+| inventory-service | `stocks.json`, `assignments.json` | stocks, product↔stock assignments |
+| procurement-service | `invoices.json` | invoices and their lines |
+| payment-service | `settlements.json` | settlements |
+
+## Why the orchestrator is central but the data is per service
+
+Invoices need supplier/product IDs and price snapshots owned by Supplier and
+Product; settlements need invoice IDs owned by Procurement. Seeding each
+service blindly at startup would force a hidden "IDs are 1, 2, 3…" contract
+between services — exactly the coupling microservices avoid. Instead:
+
+- **data ownership** follows the service boundary (each service's seed files
+  describe only what that service owns), and
+- **linking** happens once, in the orchestrator, using real API responses.
+
+Cross-service references in the seed files are business codes, never IDs:
+
+- `inventory/assignments.json` → `productCode` + `stockLabel`
+- `procurement/invoices.json` → `supplierCode` + `productCode`
+- `payment/settlements.json` → `{supplierCode, date}` of the invoice
 
 ## Prerequisites
 
-The full stack must be running: Config Server, Eureka, API Gateway, and the
-six services, with empty service databases. The script refuses to run when it
-detects existing data unless `--force` is given.
+Config Server, Eureka, API Gateway, and the six services must be running with
+empty service databases. The script refuses to run when it detects existing
+data unless `--force` is given.
 
 ## Usage
 
@@ -24,31 +46,15 @@ python3 scripts/seed-demo.py --force            # seed even if data exists
 python3 scripts/seed-demo.py --api-base http://localhost:8080/api
 ```
 
-Exit codes: `0` success, `1` seeding failed (first error is reported with the
-HTTP status and response body), `2` reserved for precondition failures raised
-before seeding starts.
-
-## Seed order
-
-The order follows the service dependency graph; later steps reference IDs
-returned by earlier ones:
-
-1. **supplier** — activity sectors, suppliers, supplier→sector assignments
-2. **user** — operators
-3. **product** — product categories, products (with category assignment)
-4. **inventory** — stocks, then product→stock assignments via the legacy
-   `PUT /produits/{productId}/stock/{stockId}` compatibility route
-5. **procurement** — invoices with lines; amounts and product snapshots are
-   computed by the service, not copied from the seed file
-6. **payment** — settlements per invoice
+Exit code `0` on success; `1` on the first failed call (HTTP status and
+response body are reported).
 
 ## Notes
 
-- The `amount`/`total` fields in `factures.json` are informational only. The
-  Procurement service recalculates line and header amounts from the stored
-  product prices, so values shown in the H2/Flyway-era docs may differ from
-  the computed totals (the script prints both).
-- Product responses intentionally report `stockId: null`; stock membership is
-  owned by the Inventory service and is visible through its assignment table.
-- Do not use this script against production data. It is a development/demo
-  seeding tool.
+- Amounts are not stored in the invoice seed files: the Procurement service
+  computes line and header totals from the catalog prices it looks up via
+  Feign, and stores product snapshots. The demo dataset produces 52.50 and
+  49.50 (10% discounted line).
+- Product responses report `stockId: null` by design; stock membership is
+  owned by Inventory and visible in its assignment table.
+- Development/demo data only — never point this at a production database.

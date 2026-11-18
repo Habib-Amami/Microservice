@@ -1,0 +1,4 @@
+[
+  {"productCode": "PROD-PAPER", "stockLabel": "Main warehouse"},
+  {"productCode": "PROD-MOUSE", "stockLabel": "Secondary warehouse"}
+]

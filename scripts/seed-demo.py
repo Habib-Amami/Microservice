@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Seed the microservice stack with the demo dataset.
+"""Seed the microservice stack with its demo dataset.
 
-The data in scripts/seed-data/ is the canonical copy of the demo dataset
-previously seeded by the monolith (backend/src/main/resources/seed/). The
-script drives the system end-to-end through the API Gateway so every record
-is created by the owning service's own logic:
+Every service owns its demo data in ``src/main/resources/seed/`` (the same
+layout the monolith used). This script only orchestrates:
 
     supplier -> user -> product -> inventory -> procurement -> payment
+
+It resolves business keys (supplier/product/stock codes) to the IDs returned
+by the owning service and links records exclusively through the API Gateway,
+so all validation and business logic runs — including invoice amount
+calculation and product snapshots in Procurement.
 
 Usage:
     python3 scripts/seed-demo.py                 # seed an empty stack
@@ -14,7 +17,7 @@ Usage:
     python3 scripts/seed-demo.py --force         # seed even if data exists
     python3 scripts/seed-demo.py --api-base http://localhost:8080/api
 
-Exit codes: 0 success, 1 seed failure, 2 precondition failure.
+Exit codes: 0 success, 1 seed failure.
 """
 
 import argparse
@@ -24,7 +27,17 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent / "seed-data"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# Each service owns its seed files under src/main/resources/seed/.
+SEED_DIRS = {
+    "supplier": PROJECT_ROOT / "supplier-service/src/main/resources/seed",
+    "user": PROJECT_ROOT / "user-service/src/main/resources/seed",
+    "product": PROJECT_ROOT / "product-service/src/main/resources/seed",
+    "inventory": PROJECT_ROOT / "inventory-service/src/main/resources/seed",
+    "procurement": PROJECT_ROOT / "procurement-service/src/main/resources/seed",
+    "payment": PROJECT_ROOT / "payment-service/src/main/resources/seed",
+}
 
 # Collections checked to decide whether the target stack already has data.
 EMPTY_GUARDS = [
@@ -81,8 +94,15 @@ class Api:
         return self.request("PUT", path, payload)
 
 
-def load(name):
-    return json.loads((DATA_DIR / name).read_text())
+def load(service, name):
+    path = SEED_DIRS[service] / name
+    if not path.exists():
+        raise SeedError(f"missing seed file: {path}")
+    return json.loads(path.read_text())
+
+
+def ref(value, placeholder):
+    return value if value is not None else f"<{placeholder}>"
 
 
 def require_empty(api, force):
@@ -102,7 +122,7 @@ def require_empty(api, force):
 
 def seed_suppliers(api):
     sectors = {}
-    for sector in load("secteurs.json"):
+    for sector in load("supplier", "sectors.json"):
         created = api.post("/secteurs-activite", {
             "codeSecteurActivite": sector["code"],
             "libelleSecteurActivite": sector["label"],
@@ -110,7 +130,7 @@ def seed_suppliers(api):
         sectors[sector["code"]] = created.get("idSecteurActivite")
 
     suppliers = {}
-    for supplier in load("fournisseurs.json"):
+    for supplier in load("supplier", "suppliers.json"):
         created = api.post("/fournisseurs", {
             "code": supplier["code"],
             "libelle": supplier["label"],
@@ -125,16 +145,14 @@ def seed_suppliers(api):
         supplier_id = created.get("idFournisseur")
         suppliers[supplier["code"]] = supplier_id
         for sector_code in supplier.get("sectorCodes", []):
-            supplier_ref = supplier_id if supplier_id is not None else "<supplierId>"
-            sector_ref = sectors[sector_code]
-            sector_ref = sector_ref if sector_ref is not None else "<sectorId>"
-            api.put(f"/fournisseurs/{supplier_ref}/secteurs-activite/{sector_ref}")
+            api.put(f"/fournisseurs/{ref(supplier_id, 'supplierId')}"
+                    f"/secteurs-activite/{ref(sectors[sector_code], 'sectorId')}")
     return suppliers
 
 
 def seed_operators(api):
     operators = {}
-    for operator in load("operateurs.json"):
+    for operator in load("user", "operators.json"):
         created = api.post("/operateurs", {
             "nom": operator["lastName"],
             "prenom": operator["firstName"],
@@ -146,7 +164,7 @@ def seed_operators(api):
 
 def seed_products(api):
     categories = {}
-    for category in load("categories.json"):
+    for category in load("product", "categories.json"):
         created = api.post("/categories-produits", {
             "codeCategorie": category["code"],
             "libelleCategorie": category["label"],
@@ -154,7 +172,7 @@ def seed_products(api):
         categories[category["code"]] = created.get("idCategorieProduit")
 
     products = {}
-    for product in load("products.json"):
+    for product in load("product", "products.json"):
         created = api.post("/produits", {
             "codeProduit": product["code"],
             "libelleProduit": product["label"],
@@ -169,7 +187,7 @@ def seed_products(api):
 
 def seed_stocks(api, products):
     stocks = {}
-    for stock in load("stocks.json"):
+    for stock in load("inventory", "stocks.json"):
         created = api.post("/stocks", {
             "libelleStock": stock["label"],
             "qte": stock["quantity"],
@@ -177,28 +195,29 @@ def seed_stocks(api, products):
         })
         stocks[stock["label"]] = created.get("idStock")
 
-    # Assign each product to the stock named in the seed data, through the
-    # inventory service's legacy compatibility route.
-    for product in load("products.json"):
-        product_id = products.get(product["code"])
-        stock_id = stocks.get(product.get("stockLabel"))
+    # Assign products to stocks through the inventory legacy compatibility route.
+    for assignment in load("inventory", "assignments.json"):
+        product_id = products.get(assignment["productCode"])
+        stock_id = stocks.get(assignment["stockLabel"])
         if api.dry_run or (product_id and stock_id):
-            product_ref = product_id if product_id is not None else "<productId>"
-            stock_ref = stock_id if stock_id is not None else "<stockId>"
-            api.put(f"/produits/{product_ref}/stock/{stock_ref}")
+            api.put(f"/produits/{ref(product_id, 'productId')}"
+                    f"/stock/{ref(stock_id, 'stockId')}")
     return stocks
 
 
+def invoice_key(source):
+    return (source["supplierCode"], source["date"])
+
+
 def seed_invoices(api, suppliers, products):
-    invoices = []
-    for invoice in load("factures.json"):
-        lines = []
-        for line in invoice.get("details", []):
-            lines.append({
-                "qteCommandee": line["quantity"],
-                "pourcentageRemise": line.get("discountPercentage", 0),
-                "produit": {"idProduit": products[line["productCode"]]},
-            })
+    invoices = {}
+    for invoice in load("procurement", "invoices.json"):
+        lines = [{
+            "qteCommandee": line["quantity"],
+            "pourcentageRemise": line.get("discountPercentage", 0),
+            "produit": {"idProduit": products[line["productCode"]]},
+        } for line in invoice.get("details", [])]
+
         created = api.post("/facture/add-facture", {
             "montantRemise": 0,
             "montantFacture": 0,
@@ -208,23 +227,23 @@ def seed_invoices(api, suppliers, products):
             "fournisseurId": suppliers[invoice["supplierCode"]],
             "detailsFacture": lines,
         })
-        invoice_id = created.get("idFacture")
-        invoices.append((invoice, invoice_id, created.get("montantFacture")))
+        invoices[invoice_key(invoice)] = (created.get("idFacture"),
+                                          created.get("montantFacture"))
     return invoices
 
 
 def seed_settlements(api, invoices):
     count = 0
-    for invoice, invoice_id, _ in invoices:
-        for payment in invoice.get("payments", []):
-            api.post("/reglements", {
-                "montantPaye": payment["paid"],
-                "montantRestant": payment["remaining"],
-                "payee": payment["paidStatus"],
-                "dateReglement": payment["date"],
-                "factureId": invoice_id,
-            })
-            count += 1
+    for settlement in load("payment", "settlements.json"):
+        invoice_id, _ = invoices[invoice_key(settlement["invoice"])]
+        api.post("/reglements", {
+            "montantPaye": settlement["paid"],
+            "montantRestant": settlement["remaining"],
+            "payee": settlement["paidStatus"],
+            "dateReglement": settlement["date"],
+            "factureId": invoice_id,
+        })
+        count += 1
     return count
 
 
@@ -246,27 +265,26 @@ def main():
               + (" (dry run)" if args.dry_run else ""))
         require_empty(api, args.force)
 
-        print("1/6 suppliers and activity sectors ...")
+        print("1/6 supplier: activity sectors and suppliers ...")
         suppliers = seed_suppliers(api)
-        print("2/6 operators ...")
+        print("2/6 user: operators ...")
         seed_operators(api)
-        print("3/6 product categories and products ...")
+        print("3/6 product: categories and products ...")
         products = seed_products(api)
-        print("4/6 stocks and product stock assignments ...")
+        print("4/6 inventory: stocks and product assignments ...")
         stocks = seed_stocks(api, products)
-        print("5/6 invoices (amounts computed by Procurement) ...")
+        print("5/6 procurement: invoices (amounts computed by the service) ...")
         invoices = seed_invoices(api, suppliers, products)
-        print("6/6 settlements ...")
+        print("6/6 payment: settlements ...")
         settlements = seed_settlements(api, invoices)
 
         print("\nSeed complete:")
         print(f"  suppliers: {len(suppliers)}  products: {len(products)}  "
               f"stocks: {len(stocks)}  invoices: {len(invoices)}  "
               f"settlements: {settlements}")
-        for invoice, invoice_id, computed_total in invoices:
-            print(f"  invoice {invoice_id}: computed total {computed_total} "
-                  f"(source file declares {invoice.get('amount')}; line amounts "
-                  "are recalculated from catalog prices)")
+        for (supplier_code, date), (invoice_id, total) in invoices.items():
+            print(f"  invoice {invoice_id}: {supplier_code} {date} -> "
+                  f"computed total {total}")
         return 0
     except SeedError as error:
         print(f"\nSEED FAILED: {error}", file=sys.stderr)
