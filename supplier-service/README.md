@@ -1,8 +1,7 @@
 # Supplier Service
 
 Standalone Supplier and activity-sector service. It owns its MySQL schema and
-does not share persistence classes or database access with the monolith or
-other services.
+does not share persistence classes or database access with any other service.
 
 ## Runtime
 

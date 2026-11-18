@@ -22,7 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         module:
-          - backend
           - infrastructure
           - product-service
           - inventory-service

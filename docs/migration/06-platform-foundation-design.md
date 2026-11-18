@@ -1,5 +1,9 @@
 # Spring Cloud Platform Foundation Design
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 **Design status:** This document records the original foundation design and
 its compatibility evidence; its initial "not implemented" statements below
 are historical. The repository now contains the Config Server, Eureka Server,

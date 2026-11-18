@@ -1,5 +1,9 @@
 # Existing Database Migration Inventory
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 This is an inventory of the current JPA model and repository configuration to
 guide later migration planning. It is **not** a dump or verification of a
 deployed MySQL schema.

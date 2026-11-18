@@ -1,5 +1,9 @@
 # Existing API Contract Inventory
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 This inventory describes the current Spring MVC controllers, response DTOs,
 entities, and Angular service calls. It is not a proposed microservices API.
 Paths below are relative to `http://localhost:8089`; the Angular development

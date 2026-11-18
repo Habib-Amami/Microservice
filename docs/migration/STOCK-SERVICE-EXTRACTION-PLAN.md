@@ -1,5 +1,9 @@
 # STOCK-SERVICE-EXTRACTION-PLAN
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 ## 1. Current implementation analysis
 
 The monolith’s Stock module is implemented as CRUD over a `Stock` entity. Its fields and source constraints are:

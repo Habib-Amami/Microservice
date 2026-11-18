@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the whole local stack.
 #
-#   scripts/run-stack.sh start [--frontend] [--monolith]
+#   scripts/run-stack.sh start [--frontend]
 #   scripts/run-stack.sh stop
 #   scripts/run-stack.sh restart
 #   scripts/run-stack.sh status
@@ -196,11 +196,10 @@ wait_route() {
 }
 
 cmd_start() {
-  local frontend=0 monolith=0
+  local frontend=0
   for arg in "$@"; do
     case "$arg" in
       --frontend) frontend=1 ;;
-      --monolith) monolith=1 ;;
       *) die "unknown start option: $arg" ;;
     esac
   done
@@ -239,16 +238,6 @@ cmd_start() {
   done
   wait_route
 
-  if [ "$monolith" = "1" ]; then
-    info "Starting monolith (fallback route) ..."
-    start_one backend backend ./mvnw \
-      CONFIG_SERVER_URL=http://localhost:8888 \
-      DB_URL="jdbc:mysql://localhost:${DB_PORT}/achatdb?createDatabaseIfNotExist=true&serverTimezone=UTC" \
-      DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" \
-      APP_SEED_ENABLED=false
-    wait_http backend http://localhost:8089/actuator/health
-  fi
-
   if [ "$frontend" = "1" ]; then
     info "Starting Angular UI ..."
     mkdir -p "$LOG_DIR" "$PID_DIR"
@@ -265,7 +254,7 @@ cmd_start() {
 
 cmd_stop() {
   info "Stopping stack ..."
-  local order=(frontend backend payment-service procurement-service user-service
+  local order=(frontend payment-service procurement-service user-service
                supplier-service inventory-service product-service api-gateway
                discovery-server config-server)
   for name in "${order[@]}"; do
@@ -305,7 +294,6 @@ cmd_status() {
     printf '%-20s %-6s %-10s %s\n' "${names[$i]}" "${ports[$i]}" "$(pid_of "${names[$i]}")" "$state"
   done
   alive frontend && printf '%-20s %-6s %-10s %s\n' frontend 4200 "$(pid_of frontend)" listening
-  alive backend  && printf '%-20s %-6s %-10s %s\n' backend 8089 "$(pid_of backend)" "$(curl -s -m 2 -o /dev/null -w '%{http_code}' http://localhost:8089/actuator/health 2>/dev/null)"
   printf 'MySQL: '
   if [ "$SKIP_DB" = "1" ]; then
     info "external on localhost:$DB_PORT"
@@ -318,7 +306,7 @@ cmd_status() {
 
 cmd_logs() {
   local name="${1:-}"
-  [ -z "$name" ] && { info "components: ${names[*]} frontend backend"; return; }
+  [ -z "$name" ] && { info "components: ${names[*]} frontend"; return; }
   [ -f "$LOG_DIR/$name.log" ] || die "no log for '$name' (.run/logs/$name.log)"
   tail -n 200 -f "$LOG_DIR/$name.log"
 }
@@ -349,9 +337,9 @@ cmd_reset() {
 usage() {
   cat <<'EOF'
 Local stack lifecycle: MySQL (Docker), Config Server, Eureka, Gateway,
-the six services, and optionally the monolith and Angular UI.
+the six services, and optionally the Angular UI.
 
-  scripts/run-stack.sh start [--frontend] [--monolith]
+  scripts/run-stack.sh start [--frontend]
   scripts/run-stack.sh stop
   scripts/run-stack.sh restart
   scripts/run-stack.sh status

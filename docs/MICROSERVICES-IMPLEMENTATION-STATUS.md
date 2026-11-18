@@ -1,15 +1,21 @@
 # Microservices Implementation Status
 
-**Evidence date:** 2026-11-17  
-**Scope:** Implement Supplier, User, Procurement, and Payment; integrate their
-Config Server/Eureka settings and explicit Gateway routes; current gap work
-adds Procurement invoice-line snapshots/Product lookup and Payment invoice
-eligibility/recovery reporting. Monolith, Angular, Product, and Inventory
-source code remain unchanged. Inventory receiving is deferred pending an
-approved receipt contract.  
-**Migration/cutover:** No production data was copied. Gateway route rules are
-configured, but are not evidence of source-data parity, production readiness,
-or an accepted cutover.
+**Evidence date:** 2026-11-17
+
+**Scope:** All six business services are implemented and routed through the
+API Gateway; the legacy monolith has been removed from the repository. Current
+gap work adds Procurement invoice-line snapshots/Product lookup and Payment
+invoice eligibility/recovery reporting. Inventory receiving is deferred pending
+an approved receipt contract.
+
+**Current validation:** Product creation requires a stock; see Product's row
+below. The full stack (Config Server, Eureka, Gateway and six services) is
+started by `scripts/run-stack.sh` and validated by the live Gateway smoke flow
+in [docs/RUN-LOCAL.md](RUN-LOCAL.md).
+
+**Migration/cutover:** No production data was copied. Local route and smoke
+results are not evidence of source-data parity, production readiness, or an
+accepted cutover.
 
 The target architecture remains in
 [`migration/02-revised-target-architecture.md`](migration/02-revised-target-architecture.md);
@@ -49,8 +55,8 @@ Config documents are in `config-repo/`:
 | Procurement | `procurement-service.yml` | `procurement_db`; Product/Supplier/User Feign connect/read timeouts configured. |
 | Payment | `payment-service.yml` | `payment_db`; Procurement Feign connect/read timeouts configured. |
 
-`config-repo/api-gateway.yml` has explicit routes with `StripPrefix=1`, before
-the monolith fallback:
+`config-repo/api-gateway.yml` has explicit routes with `StripPrefix=1` for every
+public legacy path family:
 
 | Gateway path / method | Eureka destination |
 |---|---|
@@ -64,10 +70,11 @@ the monolith fallback:
 | `/api/facture/pourcentageRecouvrement/**` (more-specific route) | `PAYMENT-SERVICE` |
 | `/api/facture/**` | `PROCUREMENT-SERVICE` |
 | `/api/reglements/**` | `PAYMENT-SERVICE` |
-| unmatched `/api/**` | `MONOLITH_BASE_URL` (default `http://localhost:8089`) |
+| `/api/internal/**` | rejected with `404` (never routed) |
+| any other `/api/**` | `404` (no fallback route) |
 
-Discovery locator remains disabled. No Gateway runtime/discovery test was
-performed after the configuration update. In particular, `/operateurs` has
+Discovery locator remains disabled. Live smoke checks cover all routed path
+families; see [docs/RUN-LOCAL.md](RUN-LOCAL.md). In particular, `/operateurs` has
 no approved authentication policy and Payment APIs lack authorization and
 settlement amount-limit/idempotency controls; their routes are not
 production-safe.
@@ -125,7 +132,7 @@ resolution; it did not fail dependency resolution or the builds.
    writes publicly before security approval.
 5. **Procurement completeness:** Invoice-line persistence, typed response
    mapping, Product lookup, and Product snapshots are implemented for line
-   details submitted to Procurement. Existing monolith invoice-line data has
+   details submitted to Procurement. Existing legacy invoice-line data has
    not been migrated. Inventory receiving, approval lifecycle, durable
    CQRS/Axon persistence, and durable integration facts remain unimplemented.
 6. **Cross-service contract readiness:** Supplier/User/Product and
@@ -147,4 +154,4 @@ resolution; it did not fail dependency resolution or the builds.
 
 Do not treat green standalone builds or local route configuration as data
 parity, production readiness, service acceptance, or authorization to switch
-the monolith's authoritative writes.
+the legacy application's authoritative writes to the new services.

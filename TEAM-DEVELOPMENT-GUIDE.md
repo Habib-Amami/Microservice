@@ -1,8 +1,8 @@
 # Team Development Guide
 
 **Purpose:** Shared, evidence-based guide for developing and integrating the
-six business services while the purchasing and stock-management monolith stays
-operational.
+six business services that now own all purchasing and stock-management
+functionality.
 
 **Repository evidence reviewed:** 2026-11-13. This guide distinguishes
 approved architecture rules, implementation visible in the repository, and
@@ -30,17 +30,16 @@ document makes a feature operational.
 ## 1. Project scope and current state
 
 This is a purchasing and stock-management application, not customer
-e-commerce. The monolith manages products/categories, stock, suppliers/sectors,
+e-commerce. Six services now own products/categories, stock, suppliers/sectors,
 operators, supplier invoices and invoice details, and supplier-invoice
-settlements. It remains operational during migration. Do not reinterpret
+settlements. The legacy monolith was removed after migration. Do not reinterpret
 supplier invoices as customer orders.
 
 | Area | Current repository evidence |
 |---|---|
-| Monolith | `backend/`, Spring Boot 4.1.1, Java 21, Maven; default port 8089. Do not upgrade or change it as part of service extraction. |
 | Frontend | `frontend/`, Angular 21; development server defaults to port 4200 and uses relative `/api` URLs. |
 | Infrastructure | Independent Maven reactor in `infrastructure/`: Config Server, Eureka Discovery Server, and API Gateway. Java 21, Spring Boot 4.0.9, Spring Cloud 2025.1.4. |
-| Gateway | Port 8080; explicit `lb://` routes now exist for Product, Inventory, Supplier, User, Procurement, and Payment legacy prefixes, including the legacy recovery-rate URL routed to Payment; unmatched `/api/**` goes to the monolith fallback with `StripPrefix=1`. Automatic discovery routes remain disabled. Route configuration is not production cutover acceptance. |
+| Gateway | Port 8080; explicit `lb://` routes exist for Product, Inventory, Supplier, User, Procurement, and Payment legacy prefixes, including the legacy recovery-rate URL routed to Payment. Unmatched `/api/**` and `/api/internal/**` return `404`; there is no fallback application. Automatic discovery routes remain disabled. Route configuration is not production cutover acceptance. |
 | Angular development proxy | `frontend/proxy.conf.json` forwards `/api` unchanged to `http://localhost:8080`; it does not strip `/api`. |
 | Product Service | Standalone `product-service/`, port 8082; Product/Category CRUD, Flyway, Config Client, and Eureka Client. Product stock assignment remains owned by Inventory. |
 | Inventory Service | Standalone `inventory-service/`, port 8083; stock CRUD/product assignment, Feign Product lookup, Flyway, Config Client, and Eureka Client. Advanced positions, movements, reservations, and receiving remain unimplemented. |
@@ -48,9 +47,9 @@ supplier invoices as customer orders.
 | User Service | Standalone `user-service/`, port 8085; operator CRUD and hashed credential storage, independent Flyway schema, Config Client, and Eureka Client. Authentication, tokens, roles/permissions, and authorization remain unimplemented. |
 | Procurement Service | Standalone `procurement-service/`, port 8086; invoice and line persistence, archive, operator assignment, product snapshots, and Feign Product/Supplier/User calls. Payment eligibility/total query endpoints are internal; Procurement does not call Payment. Inventory receiving, approved lifecycle, and Axon persistence remain unimplemented. |
 | Payment Service | Standalone `payment-service/`, port 8087; settlement CRUD/reporting with scalar invoice IDs, Feign Procurement eligibility/total lookups, and the legacy recovery-rate URL. Invoice eligibility rejects missing/archived invoices; amount-limit policy, idempotency/reconciliation, and auth remain unimplemented. |
-| Source database | The monolith uses MySQL and Hibernate `ddl-auto=update`; deployed DDL/data have not been verified. Entity-based table names below are inferences, not confirmed physical schema. |
+| Legacy source database | The retired monolith used MySQL and Hibernate `ddl-auto=update`; its deployed DDL/data were never verified. Legacy entity-based table names below are historical inferences, not confirmed physical schema. Each current service owns a separate Flyway-managed MySQL database. |
 
-The local frontend path is now route-specific:
+The local frontend path is route-specific:
 
 ```text
 Angular :4200
@@ -58,13 +57,14 @@ Angular :4200
 API Gateway :8080
   -> StripPrefix=1
   -> matching explicit Eureka service route for configured legacy prefixes
-  -> otherwise monolith fallback :8089
+  -> 404 for /api/internal/** and any unmatched /api/**
 ```
 
 Product, Inventory, Supplier, User, Procurement, and Payment route rules are
 present in `config-repo/api-gateway.yml`. This records configured routing, not
 validated service discovery, source-data parity, authentication, or an
-approved production cutover. The monolith remains operational as a fallback.
+approved production cutover. There is no fallback application after the
+monolith's removal.
 
 All six business services have standalone `clean verify` evidence recorded in
 [`docs/MICROSERVICES-IMPLEMENTATION-STATUS.md`](docs/MICROSERVICES-IMPLEMENTATION-STATUS.md).
@@ -72,7 +72,7 @@ The four new services' runtime endpoint tests use H2 with Flyway disabled;
 they do not replace MySQL migration/constraint testing or readiness checks
 against Config Server/Eureka.
 
-The baseline recorded 46 monolith REST endpoints and 38 backend tests, with
+The historical baseline recorded 46 legacy REST endpoints and 38 tests, with
 one Testcontainers context-start error caused by Docker availability at that
 time. Consult [the baseline](docs/migration/03-baseline-validation.md) and
 [the endpoint inventory](docs/migration/04-existing-api-contracts.md) for
@@ -174,8 +174,8 @@ The example path is **proposed**, not an existing Product Service endpoint.
 Use `@FeignClient(name = "registered-service-id")`, DTOs owned by the caller's
 contract, and properties externalized through Config Server. Add
 `spring-cloud-starter-openfeign` and enable Feign scanning only in a service
-that actually calls another service. The current Product Service makes no
-outbound call and has no Feign dependency/client.
+that actually calls another service. Product Service now has a Feign client to
+Inventory for stock validation and create-time assignment.
 
 ### Communication relationship register
 
@@ -287,10 +287,11 @@ inside one service clear and avoid layers that only forward a call.
       resources/
 ```
 
-Use only packages the service needs. The Product Service currently uses
-`api`, `api.dto`, `application`, `domain`, and `infrastructure.persistence`.
-The shared standards also describe hexagonal `ports/adapters`; either naming
-style is acceptable when the service retains clear boundaries.
+Use only packages the service needs. The Product Service uses `api`,
+`api.dto`, `application`, `domain`, `infrastructure.persistence`, and
+`infrastructure.inventory` for its Inventory client. The shared standards also
+describe hexagonal `ports/adapters`; either naming style is acceptable when the
+service retains clear boundaries.
 
 | Component | Convention |
 |---|---|
@@ -309,8 +310,8 @@ style is acceptable when the service retains clear boundaries.
 
 - Java 21. New Cloud applications use Spring Boot 4.0.9 and import Spring
   Cloud BOM 2025.1.4.
-- The monolith stays on Spring Boot 4.1.1 and is not included in the new
-  services' reactor.
+- All six business services share Spring Boot 4.0.9 and have independent
+  builds; none is part of the infrastructure reactor.
 - Use Maven Wrapper 3.10.0 as in `infrastructure/`, unless the platform owner
   approves a common change.
 - Let the Spring Cloud BOM manage Cloud starter versions. Do not hardcode
@@ -332,8 +333,7 @@ Current local infrastructure defaults:
 | Config Server | 8888 | Config Server project serving `config-repo/` in native mode (filesystem-backed; no nested Git repository). It bootstraps locally rather than importing its own configuration. |
 | Eureka Discovery Server | 8761 | Eureka Server; configured not to register itself or fetch its own registry. |
 | API Gateway | 8080 | WebFlux Gateway, Eureka Client and LoadBalancer; discovery route locator disabled. |
-| Monolith | 8089 | Existing backend and fallback destination. |
-| Product Service | 8082 | Standalone service default; currently includes Config Client and Eureka Client. |
+| Product Service | 8082 | Standalone service default; includes Config Client and Eureka Client. |
 
 For each business service:
 
@@ -361,18 +361,18 @@ naming difference has been reconciled).
 
 ### Gateway and frontend compatibility
 
-`config-repo/api-gateway.yml` now contains explicit routes before the
-monolith fallback:
+`config-repo/api-gateway.yml` contains explicit routes for every public legacy
+path family:
 
 ```text
-/api/stocks/** and PUT /api/produits/*/stock/* -> INVENTORY-SERVICE
+/api/stocks/** and PUT|DELETE /api/produits/*/stock... -> INVENTORY-SERVICE
 /api/produits/** and /api/categories-produits/** -> PRODUCT-SERVICE
 /api/fournisseurs/** and /api/secteurs-activite/** -> SUPPLIER-SERVICE
 /api/operateurs/** -> USER-SERVICE
 /api/facture/** -> PROCUREMENT-SERVICE
 /api/facture/pourcentageRecouvrement/** -> PAYMENT-SERVICE (more-specific route)
 /api/reglements/** -> PAYMENT-SERVICE
-all other /api/** -> MONOLITH_BASE_URL (default http://localhost:8089)
+/api/internal/** and any other /api/** -> 404 (no fallback)
 ```
 
 Routes use Eureka `lb://` service IDs and exactly one `StripPrefix=1`;
@@ -454,8 +454,8 @@ been executed. The import template in
 
 ### Monetary values and quantities
 
-The monolith uses Java `float` for Product price, invoice amounts, invoice-line
-totals/discounts, and settlement amounts. Currency and deployed SQL precision
+The legacy application used Java `float` for Product price, invoice amounts,
+invoice-line totals/discounts, and settlement amounts. Currency and SQL precision
 are not verified. The recommended new-service target is Java `BigDecimal` and
 an explicitly approved MySQL `DECIMAL(p,s)` policy (the prior standards
 propose `DECIMAL(19,4)`), plus an explicit currency and rounding policy.
@@ -589,7 +589,7 @@ Test at the layer that protects the behavior:
 6. **Inter-service integration:** exercise discovery, load balancing, service
    availability/timeouts, error propagation, and idempotent commands.
 7. **Gateway:** assert route precedence, one `/api` strip, query/body/header
-   preservation, service destination, and monolith fallback for unextracted
+   preservation, service destination, and `404` for unmatched or internal
    paths.
 8. **End-to-end/regression:** Angular → proxy → Gateway → service, and
    representative legacy workflows against a recorded baseline.
@@ -599,10 +599,11 @@ Test at the layer that protects the behavior:
 
 Do not call a test passed unless it ran. Report skipped tests, unavailable
 Docker, unstarted dependencies, and unverified databases explicitly. The
-monolith baseline currently documents a Docker/Testcontainers error; the new
-Product MySQL migration test also could not run because Testcontainers did
-not obtain a valid Docker Engine. These limitations are not evidence of
-successful schema validation.
+historical legacy baseline recorded a Docker/Testcontainers error, and the
+Product MySQL migration test initially could not run because Testcontainers
+did not obtain a valid Docker Engine. Those limitations were not evidence of
+successful schema validation; the current Product migration test now passes
+against MySQL through Testcontainers.
 
 For a Feign operation, cover:
 
@@ -679,8 +680,8 @@ A service is ready for integration only when all applicable checks are
 complete:
 
 - [ ] Independent Maven Wrapper build and `clean verify` pass on Java 21.
-- [ ] Service uses approved Boot/Cloud versions and is not coupled to the
-  monolith or another service build.
+- [ ] Service uses approved Boot/Cloud versions and is not coupled to another
+  service's build.
 - [ ] It owns an isolated database, credentials, schema, and Flyway history.
 - [ ] No cross-service SQL, JPA relation, repository, or foreign key exists.
 - [ ] Flyway migrations pass on MySQL from empty and supported prior schemas;
@@ -695,8 +696,8 @@ complete:
   idempotency behavior are tested where applicable.
 - [ ] Authorization, sensitive logging, health disclosure, and internal API
   exposure have been reviewed for the target environment.
-- [ ] Gateway route precedence, exact single prefix removal, and monolith
-  fallback are validated before route change.
+- [ ] Gateway route precedence, exact single prefix removal, and `404` for
+  unmatched/internal paths are validated before route change.
 - [ ] Required Angular/legacy regression and migration reconciliation checks
   pass; blocked tests and unavailable environments are stated.
 - [ ] Rollback and write-ownership/cutover plan is approved before the service
@@ -723,12 +724,11 @@ design. Agree contracts early so independent implementation can proceed.
 | 11 | Resilience and observability | Set timeout policies; consider resilience/tracing/metrics only with justified, reviewed policy. |
 | 12 | End-to-end testing | Angular through proxy/Gateway, migration parity, representative purchasing and settlement workflows. |
 | 13 | Deployment and CI/CD | Provision separate databases/config/secrets, health/readiness, build/test/release and rollback automation. |
-| 14 | Gradual monolith retirement | Only after all domains are accepted, data ownership is cut over, and rollback/retention obligations are met. |
+| 14 | Monolith retirement — COMPLETE | All route families are served by the six services; the legacy application was removed from the repository after local validation. |
 
-Do not interpret the roadmap as authorization to create RabbitMQ/Kafka,
-perform a data transfer, or retire the monolith. Gateway routes are configured
-for development/integration only and require route, security, and data
-acceptance before production use.
+Do not interpret the roadmap as authorization to create RabbitMQ/Kafka or
+perform a production data transfer. Gateway routes are validated locally but
+still require route, security, and data acceptance before production use.
 
 ## 13. Architectural decision register
 
@@ -745,20 +745,20 @@ Status definitions:
 | Decision | Status | Evidence / qualification |
 |---|---|---|
 | Exactly six business services: Product, Inventory, Supplier, User, Procurement, Payment | APPROVED | Revised architecture supersedes the older cart/order proposal. |
-| Java 21 | APPROVED | New infrastructure and business-service baseline; monolith currently also configures Java 21. |
-| Spring Boot 4.0.9 for new Cloud services | APPROVED | Used by infrastructure and Product Service. Monolith remains on Boot 4.1.1. |
+| Java 21 | APPROVED | Baseline for all infrastructure and business services. |
+| Spring Boot 4.0.9 for Cloud services | APPROVED | Used by infrastructure and all six business services. |
 | Spring Cloud 2025.1.4 | APPROVED | Used by infrastructure and Product Service BOMs. |
 | Independent build/deploy for each business service | IMPLEMENTED | All six business services have separate POMs/wrappers and standalone clean-verify evidence; no service is in the infrastructure reactor. |
 | Independent database and no cross-service DB/JPA ownership | APPROVED | Target architecture/standards; source deployed schema remains unverified. |
 | Flyway | IMPLEMENTED | All six business-service POMs include Flyway and their own V1 migration. MySQL migration execution is not proven for the new services. |
 | Synchronous inter-service REST; no RabbitMQ/Kafka | APPROVED | Required academic constraint. Supersedes earlier cross-service event-transport proposals. |
-| OpenFeign as default; `RestTemplate` as justified alternative | IMPLEMENTED | Inventory calls Product; Procurement calls Supplier, User, and Payment using Eureka IDs. The other services have no outbound clients. Product has no outbound client. |
+| OpenFeign as default; `RestTemplate` as justified alternative | IMPLEMENTED | Inventory calls Product; Product calls Inventory for create-time stock validation/assignment; Procurement calls Supplier, User, and Product; Payment calls Procurement. All use Eureka IDs. |
 | Eureka service discovery | IMPLEMENTED | Eureka server module and client configuration are present; configured not to self-register/fetch. |
 | Config Server | IMPLEMENTED | Separate server module serving the `config-repo/` folder in native mode. |
-| API Gateway | IMPLEMENTED | Separate WebFlux application; explicit legacy routes for all six services precede the monolith fallback; automatic discovery routes are disabled. Runtime route/discovery and auth are not verified. |
+| API Gateway | IMPLEMENTED | Separate WebFlux application; explicit legacy routes for all six services, with `404` for unmatched/internal paths; automatic discovery routes are disabled. Routes are validated by the local smoke suite; auth is not implemented. |
 | Angular development proxy through Gateway | IMPLEMENTED | `proxy.conf.json` targets port 8080 and leaves `/api` intact. |
 | Product Service independent CRUD surface | IMPLEMENTED | Standalone POM, Product/Category CRUD code, Config Client/Eureka Client, Flyway V1, health/OpenAPI configuration. Gateway routes exist; data cutover is not implemented. |
-| Product stock assignment / `stockId` compatibility | IMPLEMENTED | Inventory serves the Gateway assignment route and pushes the resulting id to Product Service's internal projection endpoint; Product responses expose `stockId`. Verified end-to-end (seed + reassignment through the Gateway). |
+| Product stock assignment / `stockId` compatibility | IMPLEMENTED | `POST /produits` requires `stockId`: Product validates it with Inventory and registers the assignment before returning `201`, rolling back the catalog row on failure. Inventory serves the Gateway assignment route and pushes the resulting id to Product Service's internal projection endpoint; Product responses expose `stockId`. Verified end-to-end (seed + create + reassignment through the Gateway). |
 | Product MySQL schema integration | IMPLEMENTED | Flyway V1/V2 validated against MySQL through the Testcontainers migration test. |
 | Supplier/User/Payment reference DTOs used by Procurement | IMPLEMENTED, provisional | Supplier and User internal lookup APIs and Payment internal revenue query exist; no provider/consumer integration test or production contract approval. Product lookup and Inventory receipt calls are still pending. |
 | JWT issuer, claims, key rotation, authorization, service identity | PENDING | No business security design is implemented by infrastructure evidence. |
@@ -786,14 +786,14 @@ Status definitions:
    requirement pending clarification of implementation details.
 3. **Historical Gateway/proxy documentation vs actual configuration:** the
    baseline and initial platform design describe the old proxy directly to
-   port 8089. The current proxy targets port 8080, preserves `/api`, and the
-   Gateway strips it once. Explicit routes now cover all six business service
-   legacy path families before the monolith fallback; route configuration is
-   not production cutover acceptance.
-4. **Product design vs implementation:** the Product design is now marked
-   approved/implemented, but explicitly defers source-data transfer and
-   Gateway cutover. Product's `stockId` is null, its legacy assignment route
-   is absent, and the MySQL migration integration test remains unverified.
+   the retired monolith on port 8089. The current proxy targets port 8080,
+   preserves `/api`, and the Gateway strips it once. Explicit routes now cover
+   all six business service legacy path families; unmatched paths return `404`.
+   Local route validation is not production cutover acceptance.
+4. **Product design vs implementation:** the Product design is marked
+   approved/implemented, but still defers source-data transfer and production
+   cutover. Product creation requires `stockId`, the legacy assignment route is
+   served by Inventory, and the MySQL migration integration test passes.
 5. **Migration tooling:** earlier standards left Flyway/Liquibase selection
    open. Flyway and V1 migrations now exist in all six business services.
    The four new migrations have not been executed against MySQL, and none is
@@ -821,12 +821,13 @@ Status definitions:
 - Approved CI, branch protection, review thresholds, deployment environment,
   secret manager, port/network assignments, and rollback/cutover procedures.
 
-The repository provides entity/controller evidence and inferred table names,
-not a verified production database schema. `docs/migration/03` records an
-environment-specific monolith test failure; Product's MySQL Testcontainers
-test also could not execute successfully in the recent build environment.
-No guide can claim deployed data parity, service startup/registration in the
-current environment, or successful end-to-end migration from those facts.
+The historical migration documents provide legacy entity/controller evidence
+and inferred table names, not a verified production database schema.
+`docs/migration/03` records an environment-specific legacy test failure.
+No guide can claim deployed data parity, production cutover, or successful
+end-to-end migration from those facts. Local startup/registration and the
+Gateway smoke flow are validated separately through
+[docs/RUN-LOCAL.md](docs/RUN-LOCAL.md).
 
 ## 15. Repository references
 
@@ -850,6 +851,5 @@ current environment, or successful end-to-end migration from those facts.
 - [Product Service project](product-service/README.md)
 - [Product Service Flyway migration](product-service/src/main/resources/db/migration/V1__create_product_catalog.sql)
 - [Product migration import preparation](product-service/scripts/migration/README.md)
-- [Monolith Maven configuration](backend/pom.xml)
-- [Monolith Java source](backend/src/main/java/org/example/achat/)
+- [Historical migration documents (archival; legacy monolith removed)](docs/migration/README.md)
 

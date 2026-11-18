@@ -1,8 +1,8 @@
 # Infrastructure Foundation
 
 The independent Maven reactor contains Config Server, Eureka Discovery
-Server, and API Gateway. The existing monolith under `backend/` remains
-separate and unchanged.
+Server, and API Gateway. The six business services are separate Maven projects
+that register here and are reached through the Gateway.
 
 ## Project structure
 
@@ -32,8 +32,8 @@ config-repo/
   `spring-cloud-starter-loadbalancer` 5.0.4
 
 The Cloud BOM manages Spring Cloud dependency versions centrally. The official
-2025.1.4 release documentation lists Boot 4.0.9 as supported. The monolith
-remains on Boot 4.1.1 and is not included in this reactor.
+2025.1.4 release documentation lists Boot 4.0.9 as supported. The six business
+services use the same baseline and are not included in this reactor.
 
 ## Configuration repository
 
@@ -119,7 +119,6 @@ In a third PowerShell terminal, configure and start the Gateway:
 ```powershell
 $env:CONFIG_SERVER_URL = "http://localhost:8888"
 $env:EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE = "http://localhost:8761/eureka/"
-$env:MONOLITH_BASE_URL = "http://localhost:8089"
 Push-Location .\infrastructure\api-gateway
 try {
     ..\mvnw.cmd spring-boot:run
@@ -129,15 +128,14 @@ try {
 ```
 
 The Gateway defaults to port 8080. `API_GATEWAY_PORT` overrides the port;
-`CONFIG_SERVER_URL`, `EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE`, and
-`MONOLITH_BASE_URL` override the Config Server, Eureka registry, and monolith
-addresses respectively. In local host-based development the monolith fallback
-is `http://localhost:8089`.
+`CONFIG_SERVER_URL` and `EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE` override the
+Config Server and Eureka registry addresses respectively. Services are resolved
+through Eureka by service ID.
 
 Inside a container, `localhost` refers to that container, not the host or
-another application. A future container deployment must supply a resolvable
-monolith service address through `MONOLITH_BASE_URL`; no Docker Compose or
-container networking is defined here.
+another application. A future container deployment must supply resolvable
+Config Server and Eureka addresses; no Docker Compose or container networking
+is defined here.
 
 ## Runtime verification
 
@@ -185,37 +183,47 @@ intentionally out of scope here.
 
 The Gateway external configuration is `config-repo/api-gateway.yml`. It
 registers `api-gateway` with Eureka, imports configuration through Config
-Data, disables the discovery route locator, and declares exactly one route:
+Data, disables the discovery route locator, and declares explicit routes for
+every public legacy path family. Each route uses `lb://<SERVICE-ID>` and one
+`StripPrefix=1`:
 
-| Route ID | Match | Filter | Destination |
-|---|---|---|---|
-| `monolith-fallback` | `/api/**` | `StripPrefix=1` | `${MONOLITH_BASE_URL:http://localhost:8089}` |
+| Route ID | Match | Destination |
+|---|---|---|
+| `inventory-stock-service` | `/api/stocks/**` | `INVENTORY-SERVICE` |
+| `inventory-product-stock-assignment` | `PUT /api/produits/*/stock/*` | `INVENTORY-SERVICE` |
+| `inventory-product-stock-unassignment` | `DELETE /api/produits/*/stock` | `INVENTORY-SERVICE` |
+| `product-service` | `/api/produits/**` | `PRODUCT-SERVICE` |
+| `category-service` | `/api/categories-produits/**` | `PRODUCT-SERVICE` |
+| `supplier-service` | `/api/fournisseurs/**` | `SUPPLIER-SERVICE` |
+| `activity-sector-service` | `/api/secteurs-activite/**` | `SUPPLIER-SERVICE` |
+| `user-service` | `/api/operateurs/**` | `USER-SERVICE` |
+| `payment-recovery-rate-compatibility` | `/api/facture/pourcentageRecouvrement/**` | `PAYMENT-SERVICE` |
+| `procurement-service` | `/api/facture/**` | `PROCUREMENT-SERVICE` |
+| `payment-service` | `/api/reglements/**` | `PAYMENT-SERVICE` |
+| `reject-internal-api` | `/api/internal/**` | `404` (never forwarded) |
 
-For example, `/api/produits/42?details=true` is forwarded to
-`/produits/42?details=true` on the monolith. Gateway's proxy forwards the
-incoming method and body and relays the upstream response; no routes are
-created automatically from registry entries. The Angular app and its
-development proxy are intentionally unchanged and continue to target port
-8089. Test the Gateway directly before any separate frontend cutover.
+Any other `/api/**` path returns `404`; there is no fallback application.
+Gateway's proxy forwards the incoming method, body and query string and relays
+the upstream response. No routes are created automatically from registry
+entries. The Angular development proxy forwards `/api` unchanged to port 8080.
 
-Direct GET smoke test using the existing product-list endpoint:
+Direct smoke test (assuming a seeded stack):
 
 ```powershell
 curl.exe -i "http://localhost:8080/api/produits"
+curl.exe -i "http://localhost:8080/api/stocks"
 ```
 
-Direct POST smoke test using the existing product-create endpoint and its
-documented JSON fields:
+Product creation now requires a stock, so a create probe must include an
+existing `stockId`. Use a disposable development database and remove any test
+record through the API:
 
 ```powershell
-$body = '{"codeProduit":"GW-SMOKE","libelleProduit":"Gateway smoke test","prix":0}'
+$body = '{"codeProduit":"GW-SMOKE","libelleProduit":"Gateway smoke test","prix":1,"stockId":1}'
 curl.exe -i -X POST "http://localhost:8080/api/produits" -H "Content-Type: application/json" -d $body
 ```
 
-The POST creates a real product in the monolith if accepted; use only in a
-disposable or approved development database and remove the created record
-through the existing API when appropriate. Gateway should preserve the
-upstream status and response body. Query preservation can be checked with:
+Query preservation can be checked with:
 
 ```powershell
 curl.exe -i "http://localhost:8080/api/produits?smoke=true"
@@ -242,12 +250,12 @@ must be designed before public deployment.
 - **Eureka does not start on 8761:** Check whether the port is occupied or set
   `EUREKA_SERVER_PORT`; confirm Eureka's configuration was committed.
   - **Gateway cannot retrieve configuration:** Start Config Server first and
-    confirm `http://localhost:8888/api-gateway/default` serves one route and
-    the expected Eureka/monolith URLs.
-  - **Gateway cannot connect to Eureka or the monolith:** Check the
-    `EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE` and `MONOLITH_BASE_URL` values from
-    the Gateway process environment. Do not use host `localhost` for another
-    container.
+    confirm `http://localhost:8888/api-gateway/default` serves the explicit
+    routes and the expected Eureka URL.
+  - **Gateway cannot connect to Eureka or a service:** Check the
+    `EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE` value from the Gateway process
+    environment and that the target service is registered. Do not use host
+    `localhost` for another container.
   - **Gateway route appears missing:** Confirm `api-gateway.yml` is committed to
     the Config Server's `main` branch and
     `spring.cloud.gateway.server.webflux.discovery.locator.enabled` is `false`.

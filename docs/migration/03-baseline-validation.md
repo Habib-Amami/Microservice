@@ -1,5 +1,9 @@
 # Existing Application Baseline Validation
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 **Scope:** Read-only inspection and validation of the current monolith before
 microservices work. No Java, Angular, database schema, dependency, or runtime
 configuration changes were made for this baseline.

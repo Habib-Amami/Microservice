@@ -1,18 +1,18 @@
 # Achat Purchasing and Stock Management
 
-This repository contains an Angular application, the legacy Spring Boot
-monolith, and six independently built services (product, inventory, supplier,
-user, procurement, payment) behind a Config Server, Eureka and an API Gateway.
-The system manages products, stock, suppliers, supplier invoices, operators,
-and invoice settlements; it is not a customer e-commerce application.
+This repository contains an Angular application and six independently built
+services (product, inventory, supplier, user, procurement, payment) behind a
+Config Server, Eureka and an API Gateway. The system manages products, stock,
+suppliers, supplier invoices, operators, and invoice settlements; it is not a
+customer e-commerce application.
 
 > **Current integration status:** all six services are routed through the API
 > Gateway (`/api/produits`, `/api/stocks`, `/api/fournisseurs`,
 > `/api/operateurs`, `/api/facture`, `/api/reglements`), including the legacy
-> product→stock assignment route. `/api/**` paths not claimed by a service
-> still fall back to the monolith, which is kept as a rollback path until the
-> migration is validated. Config Server serves `config-repo/` in native mode
-> (no nested Git repository needed); restart config clients after changing it.
+> product→stock assignment route. Unmatched `/api/**` paths and `/api/internal/**`
+> are rejected with `404`; there is no fallback application. Config Server serves
+> `config-repo/` in native mode (no nested Git repository needed); restart config
+> clients after changing it.
 >
 > **Linux/macOS quick start:** [docs/RUN-LOCAL.md](docs/RUN-LOCAL.md) — or:
 >
@@ -36,12 +36,10 @@ and invoice settlements; it is not a customer e-commerce application.
 | User Service | `user-service/` | 8085 | Operators |
 | Procurement Service | `procurement-service/` | 8086 | Invoices and lines |
 | Payment Service | `payment-service/` | 8087 | Settlements, recovery rate |
-| Monolith (fallback) | `backend/` | 8089 | Not-yet-migrated routes, rollback |
 | Angular UI | `frontend/` | 4200 | Browser UI (proxies `/api` to 8080) |
 
-Services and infrastructure use Java 21, Spring Boot 4.0.9, and Spring Cloud
-2025.1.4. The monolith remains on Spring Boot 4.1.1. Each Maven application
-has an independent build.
+All applications use Java 21, Spring Boot 4.0.9, and Spring Cloud 2025.1.4.
+Each Maven application has an independent build.
 
 ## Prerequisites
 
@@ -54,162 +52,64 @@ has an independent build.
 Do not commit passwords, tokens, private keys, `.env` files, production
 connection strings, or real personal/financial data.
 
-## Standard local run: Angular → Gateway → Product Service and monolith
+## Standard local run: Angular → Gateway → six services
 
-Use this path to run the current local routing end-to-end. Product and
-Category CRUD requests go to Product Service; all other API paths go to the
-monolith. Open separate PowerShell terminals for the processes that must keep
-running.
+The supported path is the script, which starts MySQL (Docker), Config Server,
+Eureka, the Gateway and all six services, waits for each to become ready, and
+writes logs/PIDs under `.run/`:
 
-### 1. Start MySQL
-
-From the repository root, use the backend's optional MySQL Compose service:
-
-```powershell
-Push-Location .\backend
-docker compose up -d mysql
-Pop-Location
+```bash
+scripts/run-stack.sh start          # add --frontend to also run Angular on :4200
+scripts/run-stack.sh reset          # wipe the service databases and reseed
+scripts/run-stack.sh status         # per-component health
+scripts/run-stack.sh stop           # stop everything except MySQL
 ```
 
-Alternatively, start a local MySQL server and create a development database
-and least-privilege account. The application database URL, username, and
-password must match the database you provisioned.
+For a manual start (one terminal per component, in order), see
+[docs/RUN-LOCAL.md, section 4](docs/RUN-LOCAL.md#4-manual-start-without-the-script).
+The essential order is:
 
-The Compose file defaults to database `mydatabase` and initializes the MySQL
-root password from `DB_PASSWORD` (or its development fallback). The monolith's
-application defaults target a different database name/user. **Configure them
-to match; do not assume the defaults agree.** To use Compose, create
-`backend/.env` from the local example and set `DB_URL`, `DB_USERNAME`,
-`DB_PASSWORD`, `MYSQL_DATABASE`, and `APP_SEED_ENABLED` consistently. Keep the
-file local and uncommitted:
+1. **MySQL** — the script starts `stack-mysql` on port 3307; each service gets
+   its own database (`product_db`, `inventory_db`, `supplier_db`, `user_db`,
+   `procurement_db`, `payment_db`).
+2. **Config Server** — start from `infrastructure/config-server/` so the
+   relative `config-repo/` search location resolves. It must be up before any
+   client. Verify with `curl http://localhost:8888/api-gateway/default`.
+3. **Eureka** — set `CONFIG_SERVER_URL=http://localhost:8888` and start from
+   `infrastructure/discovery-server/`; dashboard at `http://localhost:8761/`.
+4. **Gateway** — set `CONFIG_SERVER_URL` and
+   `EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE=http://localhost:8761/eureka/`, then
+   start from `infrastructure/api-gateway/`. It listens on 8080.
+5. **Six services** — start each from its own folder with its DB URL/user/
+   password plus the shared Config Server and Eureka variables (exact commands
+   in the runbook). Registration in Eureka completes shortly after startup.
+6. **Angular** — `cd frontend && npm start`. `proxy.conf.json` forwards
+   `/api/**` unchanged to `http://localhost:8080`. Run only one `ng serve` for
+   this folder at a time.
 
-```powershell
-Copy-Item .\backend\.env.example .\backend\.env
-notepad .\backend\.env
-```
-
-Set `APP_SEED_ENABLED=true` only when you want the monolith's development seed
-data in a disposable development database. Otherwise use `false`. Hibernate
-schema `update` is a monolith development behavior; do not use this setup as
-a production migration procedure.
-
-### 2. Start the monolith
-
-In a new PowerShell terminal:
-
-```powershell
-Push-Location .\backend
-.\mvnw.cmd spring-boot:run
-```
-
-The monolith should listen on `http://localhost:8089`. Check its health at
-`http://localhost:8089/actuator/health`.
-
-### 3. Check the configuration repository
-
-Config Server serves the YAML files in `config-repo/` directly (native mode);
-no nested Git repository is required. Verify the folder contains the files
-your applications need, including `api-gateway.yml` and `product-service.yml`;
-**do not put secrets in these files.** Config clients load settings at
-startup; after changing configuration, restart Config Server and the affected
-clients, then verify the served configuration. The default search location is
-relative to the Config Server working directory, so start it from
-`infrastructure/config-server/`; see
-[Infrastructure Foundation](infrastructure/README.md) for details.
-
-### 4. Start Config Server
-
-In a new PowerShell terminal:
-
-```powershell
-Push-Location .\infrastructure\config-server
-..\mvnw.cmd spring-boot:run
-```
-
-Wait for the application to report that it has started. Verify a configuration
-document is served:
-
-```powershell
-Invoke-RestMethod http://localhost:8888/api-gateway/default
-Invoke-RestMethod http://localhost:8888/product-service/default
-```
-
-Config Server defaults to port `8888`. It must be available before Eureka and
-Gateway because those applications import configuration from it.
-
-### 5. Start Eureka
-
-In a new PowerShell terminal:
-
-```powershell
-$env:CONFIG_SERVER_URL = "http://localhost:8888"
-Push-Location .\infrastructure\discovery-server
-..\mvnw.cmd spring-boot:run
-```
-
-Eureka defaults to port `8761`. Open `http://localhost:8761/` to see its
-dashboard.
-
-### 6. Start the API Gateway
-
-In a new PowerShell terminal:
-
-```powershell
-$env:CONFIG_SERVER_URL = "http://localhost:8888"
-$env:EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE = "http://localhost:8761/eureka/"
-$env:MONOLITH_BASE_URL = "http://localhost:8089"
-Push-Location .\infrastructure\api-gateway
-..\mvnw.cmd spring-boot:run
-```
-
-Gateway defaults to port `8080`. The current local Gateway configuration
-routes Product and Category paths through Eureka to Product Service, while
-other API paths fall back to the monolith. Start Product Service before
-requesting those Product paths. Smoke-test Product routing and the monolith
-fallback separately:
-
-```powershell
-curl.exe -i http://localhost:8080/api/produits
-curl.exe -i http://localhost:8080/api/stocks
-```
-
-`/api/produits` requires Product Service to be registered in Eureka;
-`/api/stocks` continues to use the monolith. Both routes remove `/api` exactly
-once.
-
-### 7. Start Angular
-
-In a new PowerShell terminal:
-
-```powershell
-Push-Location .\frontend
-npm install
-npm start
-```
-
-Open `http://localhost:4200`. `angular.json` loads `proxy.conf.json`, which
-forwards `/api/**` unchanged to `http://localhost:8080`. Start only one
-Angular dev server for this folder at a time.
+Check that `curl http://localhost:8080/api/produits` returns `200` before using
+the UI. Both the Gateway and the Angular proxy preserve `/api`; the Gateway
+removes it exactly once when forwarding to a service.
 
 ## Start Product Service
 
 Product Service is an independent application with its own MySQL database.
-Because the current local Gateway config routes Product and Category requests
-to it, start this service before using those parts of the UI. **Do not point
-it at the monolith database.**
+Start it before using product/category parts of the UI. **Do not point it at
+another service's database.**
 
 1. Provision an empty MySQL database named for Product Service and a dedicated
    database account. No source data migration is performed by startup.
 2. Verify that `product-service.yml` in `config-repo` contains appropriate
    local connection settings and contains no committed credentials. Supply
    database secrets through local environment variables.
-3. In a new PowerShell terminal, configure and start the service:
+3. In a new terminal, configure and start the service (see the runbook for the
+   equivalent bash commands):
 
 ```powershell
 $env:CONFIG_SERVER_URL = "http://localhost:8888"
 $env:EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE = "http://localhost:8761/eureka/"
 $env:PRODUCT_SERVICE_PORT = "8082"
-$env:PRODUCT_DB_URL = "jdbc:mysql://localhost:3306/product_db?createDatabaseIfNotExist=true&serverTimezone=UTC"
+$env:PRODUCT_DB_URL = "jdbc:mysql://localhost:3307/product_db?createDatabaseIfNotExist=true&serverTimezone=UTC"
 $env:PRODUCT_DB_USERNAME = "<your-local-product-db-user>"
 $env:PRODUCT_DB_PASSWORD = "<your-local-product-db-password>"
 Push-Location .\product-service
@@ -218,12 +118,11 @@ Push-Location .\product-service
 ```
 
 Flyway creates Product-owned tables in the Product database; it does not
-create the database/account or migrate monolith data. Check
+create the database/account or migrate legacy data. Check
 `http://localhost:8082/actuator/health` and the Eureka dashboard. API docs are
 available at `http://localhost:8082/swagger-ui.html`.
 
-Current Product Service limitations: search is not implemented; MySQL migration
-integration validation and source data transfer are still pending. Creating a
+Current Product Service limitations: search is not implemented. Creating a
 product requires a `stockId`: Product Service validates the stock with
 Inventory and asks Inventory to register the assignment before returning `201`,
 so no stockless product can be created through the API. Stock assignment itself
@@ -237,7 +136,7 @@ Gateway.
 ## Seed demo data
 
 With the full stack running and empty service databases, populate the demo
-dataset through the Gateway (suppliers → operators → products → stocks →
+dataset through the Gateway (suppliers → operators → stocks → products →
 invoices → settlements):
 
 ```bash
@@ -251,37 +150,32 @@ See [scripts/README.md](scripts/README.md) for details.
 Run each project's independent verification from its own folder:
 
 ```powershell
-Push-Location .\backend
-.\mvnw.cmd clean verify
-Pop-Location
-
-Push-Location .\infrastructure
-.\mvnw.cmd clean verify
-Pop-Location
-
-Push-Location .\product-service
-.\mvnw.cmd clean verify
-Pop-Location
-
+foreach ($m in @('infrastructure','product-service','inventory-service',
+                 'supplier-service','user-service','procurement-service',
+                 'payment-service')) {
+  Push-Location $m; .\mvnw.cmd clean verify; Pop-Location
+}
 Push-Location .\frontend
 npm run build
 npm test
 Pop-Location
 ```
 
-Tests that use Testcontainers require a working Docker Engine. If Docker is
-unavailable, report the skipped/failed container tests; a successful compile
-alone does not verify database migrations or service startup.
+On Linux/macOS use `./mvnw -B verify` in each Maven folder. CI runs the same
+seven Maven modules plus the frontend on every push. Tests that use
+Testcontainers require a working Docker Engine; a successful compile alone
+does not verify database migrations or service startup.
 
 ## Common troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Monolith cannot connect to MySQL | Confirm MySQL is ready, port 3306 is free, and `backend/.env` database name/user/password match the provisioned database. |
 | Config Server cannot find configuration or missing YAML | Confirm the YAML files exist in `config-repo/` and the Config Server is started from `infrastructure/config-server/` (the search location is relative to the working directory). |
 | Eureka or Gateway cannot start | Start Config Server first; verify `CONFIG_SERVER_URL`, and confirm ports 8761/8080 are available. |
-| Gateway returns 404/503 | Check route configuration served by Config Server, monolith health on 8089, `MONOLITH_BASE_URL`, and whether a Product route requires Product Service registration. |
-| Frontend cannot retrieve API data | Confirm monolith, Config Server, Eureka, Gateway, and Angular are running in that order; check proxy target 8080 and the browser network request under `/api`. |
+| Gateway returns 404 | Check route configuration served by Config Server and whether the target service is registered in Eureka. Unmatched `/api/**` paths are intentionally rejected with `404`. |
+| Gateway returns 503 | Check that the owning service is up and registered; Feign/LoadBalancer caches may need a few seconds after a restart. |
+| `400` on `POST /api/produits` | Creation requires `stockId`; add an existing stock id to the payload. |
+| Frontend cannot retrieve API data | Confirm Config Server, Eureka, Gateway and the six services are up; check the proxy target 8080 and the browser network request under `/api`. |
 | Maven cannot resolve dependencies | Check Java 21, network access to Maven Central, then rerun the wrapper command from the project's folder. |
 | Angular port is occupied | Stop the other dev server or use `npm start -- --port 4300`. |
 
@@ -294,8 +188,11 @@ separate approval.
 ## More detailed documentation
 
 - [Team development guide](TEAM-DEVELOPMENT-GUIDE.md)
+- [Local run and test runbook](docs/RUN-LOCAL.md)
+- [Microservices implementation status](docs/MICROSERVICES-IMPLEMENTATION-STATUS.md)
 - [Infrastructure startup and Gateway details](infrastructure/README.md)
-- [Monolith setup and API limitations](backend/README.md)
 - [Angular setup and troubleshooting](frontend/README.md)
-- [Product Service setup and migration status](product-service/README.md)
-- [Migration architecture and validation documents](docs/migration/)
+- [Per-service setup notes](product-service/README.md)
+- [Migration architecture and validation documents](docs/migration/README.md) —
+  historical design/baseline records; the legacy monolith they describe was
+  removed after migration.

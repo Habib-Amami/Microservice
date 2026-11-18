@@ -6,8 +6,9 @@ source DDL, selected the correct source database, reviewed source duplicates
 and invalid rows, and produced the canonical CSV exports below.
 
 The import deliberately consumes a reviewed export instead of naming guessed
-monolith tables. The DBA must map the verified source columns and category
-relationship into these UTF-8, comma-separated, LF-terminated files:
+tables in the retired source application. The DBA must map the verified source
+columns and category relationship into these UTF-8, comma-separated,
+LF-terminated files:
 
 - `product-categories.csv`: `id_category,category_code,label`
 - `products.csv`: `id_product,code_product,label,price,creation_date,last_modified_date,category_id`
@@ -26,7 +27,8 @@ stores `price` as MySQL `FLOAT`; it does not convert values to `DECIMAL`.
 2. Verify the source DDL and the CSV mapping. Do not infer physical source
    table or column names from entity annotations.
 3. Confirm both target tables are empty and both CSV files are complete.
-4. Back up the target database. Keep the monolith unchanged and authoritative.
+4. Back up the target database. Keep the source database unchanged and
+   authoritative until cutover is approved.
 5. Execute with a migration-only account and `LOCAL INFILE` enabled for the
    client. Keep the CSV files in the MySQL client's working directory.
 
@@ -38,7 +40,7 @@ client's force/continue-on-error option. The script stages the export in
 temporary tables, inserts Categories before Products, preserves IDs, and
 prints row counts, missing IDs, and mismatched Product values after import.
 The foreign key rejects Products with missing Categories; the script does not
-disable constraints, truncate tables, drop data, or modify monolith tables.
+disable constraints, truncate tables, drop data, or modify source tables.
 
 Stop and investigate if the client returns an error, any count differs, or
 any verification query returns rows. Because the deployed source schema and

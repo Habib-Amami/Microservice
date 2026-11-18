@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Seed the microservice stack with its demo dataset.
 
-Every service owns its demo data in ``src/main/resources/seed/`` (the same
-layout the monolith used). This script only orchestrates:
+Every service owns its demo data in ``src/main/resources/seed/``. This script
+only orchestrates:
 
-    supplier -> user -> product -> inventory -> procurement -> payment
+    supplier -> user -> inventory (stocks) -> product (with stockId)
+    -> procurement -> payment
 
 It resolves business keys (supplier/product/stock codes) to the IDs returned
 by the owning service and links records exclusively through the API Gateway,

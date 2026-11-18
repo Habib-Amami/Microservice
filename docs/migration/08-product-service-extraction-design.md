@@ -1,5 +1,9 @@
 # Product Service Extraction Design
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 **Status:** Approved design. The standalone Product Service is implemented;
 source data transfer and Gateway cutover remain deferred. This design follows
 [`07-microservices-development-standards.md`](./07-microservices-development-standards.md)

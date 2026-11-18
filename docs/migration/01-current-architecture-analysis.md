@@ -1,5 +1,9 @@
 # Current Architecture Analysis and Microservice Migration Proposal
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 ## 1. Executive summary and scope
 
 This is a repository-based architecture analysis only. No application source,

@@ -1,5 +1,9 @@
 # Microservices Development Standards
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 **Status:** Shared engineering baseline for the six business services. This
 document does not implement services or resolve the open business, security,
 data, and deployment decisions listed in Section 12.

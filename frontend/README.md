@@ -1,8 +1,9 @@
 # Achat – Frontend
 
-Angular web UI for the Achat purchasing API (`../backend`). It covers invoices,
-payments, products, product categories, stocks, suppliers, business sectors and
-operators.
+Angular web UI for the Achat purchasing API. It talks only to the API Gateway
+at `/api`, which routes to the six backend services (product, inventory,
+supplier, user, procurement, payment). It covers invoices, payments, products,
+product categories, stocks, suppliers, business sectors and operators.
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.26
 and uses standalone components, signals, Reactive Forms and Angular Material.
@@ -10,8 +11,9 @@ and uses standalone components, signals, Reactive Forms and Angular Material.
 ## Prerequisites
 
 - Node.js 22.12+ (or 20.19+ / 24+) and npm
-- The monolith running on <http://localhost:8089> (see [`../backend/README.md`](../backend/README.md))
-- The API Gateway running on <http://localhost:8080>
+- The API Gateway running on <http://localhost:8080>, with the six backend
+  services registered in Eureka (see [docs/RUN-LOCAL.md](../docs/RUN-LOCAL.md),
+  or run `scripts/run-stack.sh start` from the repository root)
 
 ## Install and run
 
@@ -37,13 +39,14 @@ Run **only one** `ng serve` for this folder at a time: two dev servers share the
 All HTTP calls go to `apiUrl`. During development, `ng serve` loads
 `proxy.conf.json` (configured in `angular.json`) and forwards `/api/**`
 unchanged to `http://localhost:8080`. The API Gateway removes the `/api`
-prefix and forwards requests to the monolith on port 8089. Start the monolith,
-then the API Gateway, then the Angular development server (`npm start`).
-To target another Gateway, change `target` in `proxy.conf.json`.
+prefix and routes each request to the owning service through Eureka. Start the
+backend stack (Config Server, Eureka, Gateway and the six services), then the
+Angular development server (`npm start`). To target another Gateway, change
+`target` in `proxy.conf.json`.
 
 In production, serve the built files behind a reverse proxy that forwards
-`/api` to the backend the same way, or set `apiUrl` to the backend's URL (the
-backend then needs CORS for that origin).
+`/api` to the API Gateway the same way, or set `apiUrl` to the Gateway's URL
+(the Gateway then needs CORS for that origin).
 
 The API has no authentication in the `dev` profile, so the UI has no login page.
 
@@ -92,8 +95,9 @@ Each feature folder has a `*.routes.ts` file with `''` (list), `new` (create),
 | Business sectors   | ✓    | ✓      | ✓      | ✓    | ✓      |                                          |
 | Operators          | ✓    | ✓      | ✓      | ✓    | ✓      |                                          |
 
-Missing actions (–) are not exposed by the backend; see "Known API limitations"
-in the backend README.
+Missing actions (–) are not exposed by the API; see the per-service READMEs and
+[docs/MICROSERVICES-IMPLEMENTATION-STATUS.md](../docs/MICROSERVICES-IMPLEMENTATION-STATUS.md)
+for current scope and limitations.
 
 ## Building
 
@@ -141,10 +145,11 @@ Formatting uses Prettier (`.prettierrc`): `npx prettier --write "src/**/*.{ts,ht
   npm start
   ```
 
-- **"Cannot reach the server. Is the backend running?":** start the monolith
-  on port 8089 and the API Gateway on port 8080, then start Angular with
-  `npm start`. The development proxy forwards `/api/**` unchanged to the
-  Gateway; the Gateway strips the prefix before forwarding to the monolith.
+- **"Cannot reach the server. Is the backend running?":** start the backend
+  stack with `scripts/run-stack.sh start` (or start Config Server, Eureka, the
+  Gateway and the six services manually), then start Angular with `npm start`.
+  The development proxy forwards `/api/**` unchanged to the Gateway; the Gateway
+  strips the prefix and routes to the owning service.
 - **Port 4200 already in use:** `ng serve --port 4300`.
 
 ## Additional Resources

@@ -2,8 +2,7 @@
 
 This is the practical runbook: start every component, seed the demo dataset,
 and exercise each flow by hand. Windows users can use the same commands in
-Git Bash or WSL, or translate them to the PowerShell commands in the root
-[README](../README.md).
+Git Bash or WSL, or start the components manually as shown in section 4.
 
 ## 1. Prerequisites
 
@@ -16,8 +15,7 @@ Git Bash or WSL, or translate them to the PowerShell commands in the root
 | curl | any | manual checks |
 
 Ports that must be free: `3307` (MySQL), `8888` (Config), `8761` (Eureka),
-`8080` (Gateway), `8082`–`8087` (services), `4200` (UI), `8089` (monolith,
-optional).
+`8080` (Gateway), `8082`–`8087` (services), and `4200` (UI, optional).
 
 ## 2. Quick start (one command)
 
@@ -32,11 +30,10 @@ scripts/run-stack.sh reset
 scripts/run-stack.sh status
 ```
 
-Optional extras:
+Optional extra:
 
 ```bash
 scripts/run-stack.sh start --frontend   # also runs the Angular UI on :4200
-scripts/run-stack.sh start --monolith   # also runs the monolith on :8089
 ```
 
 The script writes logs to `.run/logs/<component>.log`, PIDs to `.run/pids/`,
@@ -136,14 +133,6 @@ PROCUREMENT_DB_USERNAME=root PROCUREMENT_DB_PASSWORD=root ./mvnw spring-boot:run
 cd payment-service
 PAYMENT_DB_URL="$DB/payment_db?createDatabaseIfNotExist=true&serverTimezone=UTC" \
 PAYMENT_DB_USERNAME=root PAYMENT_DB_PASSWORD=root ./mvnw spring-boot:run
-```
-
-Optional monolith (fallback route on `:8089`; it does not use Config Server):
-
-```bash
-cd backend
-DB_URL="jdbc:mysql://localhost:3307/achatdb?createDatabaseIfNotExist=true&serverTimezone=UTC" \
-DB_USERNAME=root DB_PASSWORD=root ./mvnw spring-boot:run
 ```
 
 Optional UI:

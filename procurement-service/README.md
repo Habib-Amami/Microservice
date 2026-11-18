@@ -26,7 +26,7 @@ Implements the legacy `/facture/**` invoice paths and scalar header fields.
 Create accepts an optional legacy-shaped `detailsFacture` array (`qteCommandee`,
 `pourcentageRemise`, and `produit.idProduit`). Procurement validates each
 product through the existing Product `GET /produits/{productId}` endpoint,
-applies the monolith's existing line-price/discount calculation, persists
+applies the legacy line-price/discount calculation, persists
 product snapshots, and returns typed line DTOs on create/list/get. Existing
 header-only Angular requests remain valid. A nullable `fournisseurId` request
 field remains an additive scalar reference validated through Supplier.

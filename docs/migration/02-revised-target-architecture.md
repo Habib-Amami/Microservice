@@ -1,5 +1,9 @@
 # Revised Target Architecture: Six Purchasing Microservices
 
+> **Archival document.** This is a historical migration record; the legacy
+> monolith (`backend/`) has been removed. See [README](README.md) for context
+> and links to current documentation.
+
 **Architecture status:** Revised six-service purchasing boundaries and
 platform decisions remain the target design; diagrams describe intended
 ownership, not proof of runtime integration or production readiness.

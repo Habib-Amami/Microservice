@@ -105,8 +105,8 @@ spring:
                 - StripPrefix=1
 
             # Service-to-service APIs are never part of the public /api surface.
-            # Without this route they fall through to the monolith fallback and
-            # appear as 500 when the fallback is not running.
+            # All public /api/** families are routed above; anything else is
+            # rejected with 404 rather than being forwarded to another service.
             - id: reject-internal-api
               order: -10
               uri: no://op
@@ -114,15 +114,6 @@ spring:
                 - Path=/api/internal/**
               filters:
                 - SetStatus=404
-
-            # Monolith fallback
-            - id: monolith-fallback
-              order: 0
-              uri: ${MONOLITH_BASE_URL:http://localhost:8089}
-              predicates:
-                - Path=/api/**
-              filters:
-                - StripPrefix=1
 
 server:
   port: ${API_GATEWAY_PORT:8080}
