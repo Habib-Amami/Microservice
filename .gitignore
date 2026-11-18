@@ -17,3 +17,6 @@ node_modules/
 # Python
 __pycache__/
 *.pyc
+
+# Local run artifacts (scripts/run-stack.sh)
+.run/

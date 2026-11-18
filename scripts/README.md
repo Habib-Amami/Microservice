@@ -5,6 +5,10 @@ layout the monolith used. `seed-demo.py` is a thin orchestrator: it reads
 those files, calls the owning service through the API Gateway in dependency
 order, and resolves business codes to the IDs each service returns.
 
+To start a local stack first, see [docs/RUN-LOCAL.md](../docs/RUN-LOCAL.md) or
+use `scripts/run-stack.sh start` (then `scripts/run-stack.sh reset` to wipe and
+reseed).
+
 | Service | Seed files | Owns |
 |---|---|---|
 | supplier-service | `sectors.json`, `suppliers.json` | activity sectors, suppliers, sector assignments |

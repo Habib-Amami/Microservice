@@ -23,6 +23,7 @@ Exit codes: 0 success, 1 seed failure.
 import argparse
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -54,6 +55,14 @@ class SeedError(RuntimeError):
     pass
 
 
+# 502/503/504 from the Gateway or a Feign client mean "no instance yet" while
+# Eureka/load-balancer caches warm up after a restart, not that the request was
+# rejected. They are safe to retry.
+TRANSIENT_STATUS = {502, 503, 504}
+RETRY_ATTEMPTS = 12
+RETRY_DELAY_SECONDS = 3
+
+
 class Api:
     def __init__(self, base, dry_run=False):
         self.base = base.rstrip("/")
@@ -65,24 +74,30 @@ class Api:
                   + (f" {json.dumps(payload)[:120]}" if payload else ""))
             return {} if method != "PUT" else None
         body = json.dumps(payload).encode() if payload is not None else None
-        request = urllib.request.Request(
-            self.base + path,
-            data=body,
-            method=method,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                raw = response.read()
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode(errors="replace")[:400]
-            raise SeedError(f"{method} {path} -> HTTP {error.code}: {detail}") from None
-        except urllib.error.URLError as error:
-            raise SeedError(
-                f"{method} {path} -> cannot reach {self.base}: {error.reason}. "
-                "Start Config Server, Eureka, Gateway, and the services first."
-            ) from None
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            request = urllib.request.Request(
+                self.base + path,
+                data=body,
+                method=method,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    raw = response.read()
+                    return json.loads(raw) if raw else None
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode(errors="replace")[:400]
+                if error.code in TRANSIENT_STATUS and attempt < RETRY_ATTEMPTS:
+                    print(f"    {method} {path} -> HTTP {error.code}, retry "
+                          f"{attempt}/{RETRY_ATTEMPTS - 1} while services register ...")
+                    time.sleep(RETRY_DELAY_SECONDS)
+                    continue
+                raise SeedError(f"{method} {path} -> HTTP {error.code}: {detail}") from None
+            except urllib.error.URLError as error:
+                raise SeedError(
+                    f"{method} {path} -> cannot reach {self.base}: {error.reason}. "
+                    "Start Config Server, Eureka, Gateway, and the services first."
+                ) from None
 
     def get(self, path):
         return self.request("GET", path)

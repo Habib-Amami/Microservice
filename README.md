@@ -1,36 +1,47 @@
 # Achat Purchasing and Stock Management
 
-This repository contains an Angular application, the existing Spring Boot
-monolith, local development infrastructure, and an independently built
-Product Service. The system manages products, stock, suppliers, supplier
-invoices, operators, and invoice settlements; it is not a customer
-e-commerce application.
+This repository contains an Angular application, the legacy Spring Boot
+monolith, and six independently built services (product, inventory, supplier,
+user, procurement, payment) behind a Config Server, Eureka and an API Gateway.
+The system manages products, stock, suppliers, supplier invoices, operators,
+and invoice settlements; it is not a customer e-commerce application.
 
-> **Current integration status:** The Angular development proxy sends `/api`
-> unchanged to the API Gateway. The current local
-> `config-repo/api-gateway.yml` adds Product and Category routes to
-> `lb://PRODUCT-SERVICE`; other `/api/**` requests fall back to the monolith.
-> Each route strips `/api` once. Config Server serves `config-repo/` in
-> native mode (no nested Git repository needed). Restart config clients after
-> configuration
-> changes. Product Service does not implement the legacy stock assignment
-> route, so that part of the Product UI is not yet compatible.
+> **Current integration status:** all six services are routed through the API
+> Gateway (`/api/produits`, `/api/stocks`, `/api/fournisseurs`,
+> `/api/operateurs`, `/api/facture`, `/api/reglements`), including the legacy
+> product→stock assignment route. `/api/**` paths not claimed by a service
+> still fall back to the monolith, which is kept as a rollback path until the
+> migration is validated. Config Server serves `config-repo/` in native mode
+> (no nested Git repository needed); restart config clients after changing it.
+>
+> **Linux/macOS quick start:** [docs/RUN-LOCAL.md](docs/RUN-LOCAL.md) — or:
+>
+> ```bash
+> scripts/run-stack.sh start     # MySQL + config + Eureka + gateway + 6 services
+> scripts/run-stack.sh reset     # wipe and seed the demo dataset
+> scripts/run-stack.sh status    # per-component health
+> ```
 
 ## Applications and local ports
 
-| Component | Folder | Default port | Required for standard UI run |
+| Component | Folder | Default port | Purpose |
 |---|---|---:|---|
-| MySQL | Local installation or `backend/compose.yaml` | 3306 | Yes |
-| Existing monolith API | `backend/` | 8089 | Yes |
-| Config Server | `infrastructure/config-server/` | 8888 | Yes |
-| Eureka Discovery Server | `infrastructure/discovery-server/` | 8761 | Yes |
-| API Gateway | `infrastructure/api-gateway/` | 8080 | Yes |
-| Angular UI | `frontend/` | 4200 | Yes |
-| Product Service | `product-service/` | 8082 | Yes for Product/Category routes; stock assignment is not supported |
+| MySQL | Docker (see runbook) or local install | 3307 / 3306 | Service databases |
+| Config Server | `infrastructure/config-server/` | 8888 | Native config from `config-repo/` |
+| Eureka Discovery Server | `infrastructure/discovery-server/` | 8761 | Service registry |
+| API Gateway | `infrastructure/api-gateway/` | 8080 | Single entry point for `/api/**` |
+| Product Service | `product-service/` | 8082 | Products, product categories |
+| Inventory Service | `inventory-service/` | 8083 | Stocks, product→stock links |
+| Supplier Service | `supplier-service/` | 8084 | Suppliers, activity sectors |
+| User Service | `user-service/` | 8085 | Operators |
+| Procurement Service | `procurement-service/` | 8086 | Invoices and lines |
+| Payment Service | `payment-service/` | 8087 | Settlements, recovery rate |
+| Monolith (fallback) | `backend/` | 8089 | Not-yet-migrated routes, rollback |
+| Angular UI | `frontend/` | 4200 | Browser UI (proxies `/api` to 8080) |
 
-Infrastructure applications and Product Service use Java 21, Spring Boot
-4.0.9, and Spring Cloud 2025.1.4. The monolith remains on Spring Boot 4.1.1.
-Each Maven application has an independent build.
+Services and infrastructure use Java 21, Spring Boot 4.0.9, and Spring Cloud
+2025.1.4. The monolith remains on Spring Boot 4.1.1. Each Maven application
+has an independent build.
 
 ## Prerequisites
 
