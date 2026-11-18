@@ -78,6 +78,10 @@ public class SettlementApplicationService {
             throw new IllegalArgumentException("Start date must be before or equal to end date");
         }
         InvoiceTotalResponse invoiceTotal = getInvoiceTotal(startDate, endDate);
+        if (invoiceTotal.total() == 0) {
+            // No invoiced amount in the period: no recovery rate to report.
+            return 0;
+        }
         float paymentTotal = repository.getRevenueBetweenDates(startDate, endDate);
         return (paymentTotal / invoiceTotal.total()) * 100;
     }

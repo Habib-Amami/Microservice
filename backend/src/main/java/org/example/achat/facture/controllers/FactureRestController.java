@@ -72,11 +72,7 @@ public class FactureRestController {
     public float pourcentageRecouvrement(
             @PathVariable(name = "startDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date startDate,
             @PathVariable(name = "endDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date endDate) {
-        try {
-            return factureService.pourcentageRecouvrement(startDate, endDate);
-        } catch (Exception e) {
-            return 0;
-        }
+        return factureService.pourcentageRecouvrement(startDate, endDate);
     }
 
 }

@@ -1,11 +1,12 @@
 package org.example.achat.facture.services;
 
 import jakarta.transaction.Transactional;
-import lombok.extern.slf4j.Slf4j;
 import org.example.achat.facture.entities.Facture;
 import org.example.achat.facture.entities.DetailFacture;
+import org.example.achat.facture.exceptions.FactureNotFoundException;
 import org.example.achat.facture.repositories.FactureRepository;
 import org.example.achat.facture.repositories.DetailFactureRepository;
+import org.example.achat.produit.exceptions.ProduitNotFoundException;
 import org.example.achat.produit.repositories.ProduitRepository;
 import org.example.achat.produit.entities.Produit;
 import org.example.achat.operateur.entities.Operateur;
@@ -22,7 +23,6 @@ import java.util.List;
 import java.util.Set;
 
 @Service
-@Slf4j
 @Transactional
 public class FactureServiceImpl implements IFactureService {
 
@@ -41,11 +41,7 @@ public class FactureServiceImpl implements IFactureService {
 	
 	@Override
 	public List<Facture> retrieveAllFactures() {
-		List<Facture> factures = (List<Facture>) factureRepository.findAll();
-		for (Facture facture : factures) {
-			log.info(" facture : " + facture);
-		}
-		return factures;
+		return (List<Facture>) factureRepository.findAll();
 	}
 
 	
@@ -62,7 +58,8 @@ public class FactureServiceImpl implements IFactureService {
 		float montantRemise = 0;
 		for (DetailFacture detail : detailsFacture) {
 			//Récuperer le produit 
-			Produit produit = produitRepository.findById(detail.getProduit().getIdProduit()).get();
+			Produit produit = produitRepository.findById(detail.getProduit().getIdProduit())
+					.orElseThrow(() -> new ProduitNotFoundException(detail.getProduit().getIdProduit()));
 			//Calculer le montant total pour chaque détail Facture
 			float prixTotalDetail = detail.getQteCommandee() * produit.getPrix();
 			//Calculer le montant remise pour chaque détail Facture
@@ -83,21 +80,16 @@ public class FactureServiceImpl implements IFactureService {
 
 	@Override
 	public void cancelFacture(Long factureId) {
-		// Méthode 01
-		//Facture facture = factureRepository.findById(factureId).get();
-		Facture facture = factureRepository.findById(factureId).orElse(new Facture());
+		Facture facture = factureRepository.findById(factureId)
+				.orElseThrow(() -> new FactureNotFoundException(factureId));
 		facture.setArchivee(true);
 		factureRepository.save(facture);
-		//Méthode 02 (Avec JPQL)
-		factureRepository.updateFacture(factureId);
 	}
 
 	@Override
 	public Facture retrieveFacture(Long factureId) {
-
-		Facture facture = factureRepository.findById(factureId).orElse(null);
-		log.info("facture :" + facture);
-		return facture;
+		return factureRepository.findById(factureId)
+				.orElseThrow(() -> new FactureNotFoundException(factureId));
 	}
 
 	@Override
@@ -110,7 +102,8 @@ public class FactureServiceImpl implements IFactureService {
 
 	@Override
 	public void assignOperateurToFacture(Long idOperateur, Long idFacture) {
-		Facture facture = factureRepository.findById(idFacture).orElse(null);
+		Facture facture = factureRepository.findById(idFacture)
+				.orElseThrow(() -> new FactureNotFoundException(idFacture));
 		Operateur operateur = operateurRepository.findById(idOperateur)
 				.orElseThrow(() -> new OperateurNotFoundException(idOperateur));
 		operateur.getFactures().add(facture);
@@ -120,9 +113,11 @@ public class FactureServiceImpl implements IFactureService {
 	@Override
 	public float pourcentageRecouvrement(Date startDate, Date endDate) {
 		float totalFacturesEntreDeuxDates = factureRepository.getTotalFacturesEntreDeuxDates(startDate,endDate);
+		if (totalFacturesEntreDeuxDates == 0) {
+			return 0;
+		}
 		float totalRecouvrementEntreDeuxDates = reglementService.getRevenueBetweenDates(startDate, endDate);
-		float pourcentage=(totalRecouvrementEntreDeuxDates/totalFacturesEntreDeuxDates)*100;
-		return pourcentage;
+		return (totalRecouvrementEntreDeuxDates/totalFacturesEntreDeuxDates)*100;
 	}
 	
 
