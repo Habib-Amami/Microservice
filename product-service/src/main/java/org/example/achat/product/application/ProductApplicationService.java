@@ -64,6 +64,17 @@ public class ProductApplicationService {
         productRepository.deleteById(productId);
     }
 
+    /**
+     * Stores the stock projection pushed by inventory-service, which owns the
+     * assignment. A {@code null} id clears it (product no longer in a stock).
+     */
+    @Transactional
+    public ProductResponse updateStockAssignment(Long productId, Long stockId) {
+        Product product = findProduct(productId);
+        product.setStockId(stockId);
+        return toResponse(productRepository.save(product));
+    }
+
     private Product findProduct(Long productId) {
         return productRepository.findById(productId)
                 .orElseThrow(() -> new ProductNotFoundException(productId));
@@ -94,7 +105,7 @@ public class ProductApplicationService {
                 product.getCodeProduit(),
                 product.getLibelleProduit(),
                 product.getPrix(),
-                null,
+                product.getStockId(),
                 categoryId);
     }
 }

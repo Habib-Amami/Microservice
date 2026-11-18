@@ -35,15 +35,21 @@ class ProductSchemaMigrationTest {
                     VALUES (1, 'CAT-A', 'Category A')
                     """);
             statement.executeUpdate("""
-                    INSERT INTO products (id_product, code_product, label, price, category_id)
-                    VALUES (1, 'DUPLICATE', 'Product A', 1.25, 1),
-                           (2, 'DUPLICATE', 'Product B', 2.50, 1)
+                    INSERT INTO products (id_product, code_product, label, price, category_id, stock_id)
+                    VALUES (1, 'DUPLICATE', 'Product A', 1.25, 1, 42),
+                           (2, 'DUPLICATE', 'Product B', 2.50, 1, NULL)
                     """);
 
             try (ResultSet products = statement.executeQuery(
                     "SELECT COUNT(*) FROM products WHERE code_product = 'DUPLICATE'")) {
                 products.next();
                 assertThat(products.getInt(1)).isEqualTo(2);
+            }
+
+            try (ResultSet products = statement.executeQuery(
+                    "SELECT stock_id FROM products WHERE id_product = 1")) {
+                products.next();
+                assertThat(products.getLong(1)).isEqualTo(42L);
             }
 
             boolean categoryDeleteRejected = false;

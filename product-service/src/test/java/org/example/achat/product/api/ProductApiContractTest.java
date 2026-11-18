@@ -40,7 +40,8 @@ class ProductApiContractTest {
         validator.afterPropertiesSet();
         mockMvc = standaloneSetup(
                 new ProductController(productService),
-                new ProductCategoryController(categoryService))
+                new ProductCategoryController(categoryService),
+                new InternalProductController(productService))
                 .setControllerAdvice(new ProductExceptionHandler())
                 .setValidator(validator)
                 .build();
@@ -181,5 +182,33 @@ class ProductApiContractTest {
 
         mockMvc.perform(delete("/categories-produits/5")).andExpect(status().isNoContent());
         verify(categoryService).delete(5L);
+    }
+
+    @Test
+    void acceptsStockProjectionPushedByInventoryService() throws Exception {
+        when(productService.updateStockAssignment(7L, 5L))
+                .thenReturn(new ProductResponse(7L, "P-7", "Paper", 2.5f, 5L, 3L));
+
+        mockMvc.perform(put("/internal/v1/products/7/stock")
+                        .contentType("application/json")
+                        .content("""
+                                {"stockId":5}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.idProduit").value(7))
+                .andExpect(jsonPath("$.stockId").value(5));
+    }
+
+    @Test
+    void rejectsStockProjectionForMissingProduct() throws Exception {
+        when(productService.updateStockAssignment(404L, 5L))
+                .thenThrow(new ProductNotFoundException(404L));
+
+        mockMvc.perform(put("/internal/v1/products/404/stock")
+                        .contentType("application/json")
+                        .content("""
+                                {"stockId":5}
+                                """))
+                .andExpect(status().isNotFound());
     }
 }

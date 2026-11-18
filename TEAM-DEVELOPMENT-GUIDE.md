@@ -758,8 +758,8 @@ Status definitions:
 | API Gateway | IMPLEMENTED | Separate WebFlux application; explicit legacy routes for all six services precede the monolith fallback; automatic discovery routes are disabled. Runtime route/discovery and auth are not verified. |
 | Angular development proxy through Gateway | IMPLEMENTED | `proxy.conf.json` targets port 8080 and leaves `/api` intact. |
 | Product Service independent CRUD surface | IMPLEMENTED | Standalone POM, Product/Category CRUD code, Config Client/Eureka Client, Flyway V1, health/OpenAPI configuration. Gateway routes exist; data cutover is not implemented. |
-| Product MySQL schema integration | PENDING | Flyway migration test exists, but Docker/Testcontainers could not run; schema has not been validated against MySQL here. |
-| Product stock assignment / `stockId` compatibility | PENDING | Inventory serves the Gateway assignment route; Product currently returns `stockId: null`. End-to-end compatibility remains unaccepted. |
+| Product stock assignment / `stockId` compatibility | IMPLEMENTED | Inventory serves the Gateway assignment route and pushes the resulting id to Product Service's internal projection endpoint; Product responses expose `stockId`. Verified end-to-end (seed + reassignment through the Gateway). |
+| Product MySQL schema integration | IMPLEMENTED | Flyway V1/V2 validated against MySQL through the Testcontainers migration test. |
 | Supplier/User/Payment reference DTOs used by Procurement | IMPLEMENTED, provisional | Supplier and User internal lookup APIs and Payment internal revenue query exist; no provider/consumer integration test or production contract approval. Product lookup and Inventory receipt calls are still pending. |
 | JWT issuer, claims, key rotation, authorization, service identity | PENDING | No business security design is implemented by infrastructure evidence. |
 | Monetary conversion from legacy `float` | PENDING | `BigDecimal`/`DECIMAL(19,4)` is only a recommendation; Finance/data approval and source DDL required. |

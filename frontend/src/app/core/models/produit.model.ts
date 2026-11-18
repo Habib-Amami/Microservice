@@ -9,8 +9,10 @@ export interface Produit {
 }
 
 /**
- * Writable fields of the `Produit` entity. `stock` and `categorieProduit` are `@JsonIgnore`d,
- * so the stock is assigned through `PUT /produits/{id}/stock/{stockId}` and the category cannot be set.
+ * Writable fields of the `Produit` entity: the stock link is not writable here.
+ * Stock assignment stays owned by inventory-service and goes through
+ * `PUT /produits/{id}/stock/{stockId}`; the resulting `stockId` comes back as a
+ * read projection in `Produit`.
  */
 export interface ProduitPayload {
   codeProduit: string;

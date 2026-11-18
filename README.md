@@ -222,12 +222,13 @@ create the database/account or migrate monolith data. Check
 `http://localhost:8082/actuator/health` and the Eureka dashboard. API docs are
 available at `http://localhost:8082/swagger-ui.html`.
 
-Current Product Service limitations: search and legacy stock assignment are
-not implemented; Product responses have `stockId: null`; MySQL migration
-integration validation and source data transfer are still pending. Because
-the current `/api/produits/**` Gateway route also matches the stock-assignment
-path, that UI operation is sent to Product Service and will fail until an
-approved Inventory/compatibility route is added and tested.
+Current Product Service limitations: search is not implemented; MySQL migration
+integration validation and source data transfer are still pending. Stock
+assignment is owned by Inventory Service (`PUT /api/produits/{id}/stock/{stockId}`
+is routed there); Inventory pushes the resulting `stockId` into Product
+Service's read projection, so Product responses expose it. The internal
+projection endpoint (`PUT /internal/v1/products/{id}/stock`) is deliberately
+not routed by the Gateway.
 
 ## Seed demo data
 

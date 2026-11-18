@@ -59,6 +59,8 @@ response body are reported).
   computes line and header totals from the catalog prices it looks up via
   Feign, and stores product snapshots. The demo dataset produces 52.50 and
   49.50 (10% discounted line).
-- Product responses report `stockId: null` by design; stock membership is
-  owned by Inventory and visible in its assignment table.
+- Product responses expose `stockId` from a read projection: Inventory owns
+  the assignment and pushes the id to Product Service after saving it. The
+  value is `null` only when no stock was assigned or the projection call
+  failed (re-assign or reseed to repair).
 - Development/demo data only — never point this at a production database.

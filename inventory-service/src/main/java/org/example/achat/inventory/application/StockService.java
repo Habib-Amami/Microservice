@@ -7,7 +7,11 @@ import org.example.achat.inventory.domain.StockProductAssignment;
 import org.example.achat.inventory.infrastructure.persistence.StockProductAssignmentRepository;
 import org.example.achat.inventory.infrastructure.persistence.StockRepository;
 import org.example.achat.inventory.infrastructure.product.ProductClient;
+import org.example.achat.inventory.infrastructure.product.ProductStockProjectionClient;
 import org.example.achat.inventory.infrastructure.product.dto.ProductResponse;
+import org.example.achat.inventory.infrastructure.product.dto.StockAssignmentRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,17 +20,22 @@ import java.util.List;
 @Service
 public class StockService {
 
+    private static final Logger log = LoggerFactory.getLogger(StockService.class);
+
     private final StockRepository stockRepository;
     private final StockProductAssignmentRepository assignmentRepository;
     private final ProductClient productClient;
+    private final ProductStockProjectionClient projectionClient;
 
     public StockService(
             StockRepository stockRepository,
             StockProductAssignmentRepository assignmentRepository,
-            ProductClient productClient) {
+            ProductClient productClient,
+            ProductStockProjectionClient projectionClient) {
         this.stockRepository = stockRepository;
         this.assignmentRepository = assignmentRepository;
         this.productClient = productClient;
+        this.projectionClient = projectionClient;
     }
 
     @Transactional(readOnly = true)
@@ -92,8 +101,25 @@ public class StockService {
         }
         assignment.setStock(stock);
         assignmentRepository.save(assignment);
+        projectStockAssignment(productId, stockId);
 
         return product.withStockId(stockId);
+    }
+
+    /**
+     * Mirrors the assignment into product-service's read model so product
+     * responses can expose stockId. The assignment is already committed to
+     * this service's database, so a projection failure is logged rather than
+     * failing the caller; re-assigning or reseeding repairs it.
+     */
+    private void projectStockAssignment(Long productId, Long stockId) {
+        try {
+            projectionClient.assignStock(productId, new StockAssignmentRequest(stockId));
+        } catch (FeignException exception) {
+            log.warn("Product {} was assigned to stock {}, but the product-service "
+                     + "stock projection was not updated: {}",
+                    productId, stockId, exception.getMessage());
+        }
     }
 
     private ProductResponse findProduct(Long productId) {

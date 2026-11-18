@@ -40,6 +40,12 @@ public class Product {
     @JoinColumn(name = "category_id")
     private ProductCategory categorieProduit;
 
+    // Read projection of the stock assignment owned by inventory-service.
+    // The assignment itself lives in inventory_db; this id keeps product
+    // reads local.
+    @Column(name = "stock_id")
+    private Long stockId;
+
     public Long getIdProduit() {
         return idProduit;
     }
@@ -94,5 +100,13 @@ public class Product {
 
     public void setCategorieProduit(ProductCategory categorieProduit) {
         this.categorieProduit = categorieProduit;
+    }
+
+    public Long getStockId() {
+        return stockId;
+    }
+
+    public void setStockId(Long stockId) {
+        this.stockId = stockId;
     }
 }

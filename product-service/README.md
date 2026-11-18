@@ -40,12 +40,13 @@ Category CRUD routes under `/categories-produits`. Search is deferred because
 the legacy API has no search contract. Product price remains `float` pending
 Finance approval. Product codes are not unique-constrained.
 
-Product responses retain the legacy `stockId` JSON field as `null`; the
-service owns no stock data. The stock assignment endpoint is not implemented.
-Do not route any Product prefix through the Gateway yet. Per the approved
-scope, all Gateway cutover waits until Inventory defines the stock assignment
-and `stockId` compatibility contract. The existing Gateway fallback remains
-unchanged.
+Product responses expose the legacy `stockId` field as a read projection:
+Inventory owns the assignment and pushes the id to
+`PUT /internal/v1/products/{id}/stock` after saving it. That internal route is
+not exposed by the Gateway; the legacy assignment path
+`/produits/{productId}/stock/{stockId}` is routed to Inventory. The projection
+is best-effort (assignment failures are logged by Inventory, never blocking
+the assignment), so it is repaired by re-assigning or reseeding.
 
 Category references are Product-owned and non-cascading. Database constraint
 conflicts return HTTP 409. Product deletion cannot detect references in

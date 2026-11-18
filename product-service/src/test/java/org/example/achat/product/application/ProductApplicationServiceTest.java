@@ -80,4 +80,40 @@ class ProductApplicationServiceTest {
                 new ProductRequest("P-99", "No category", 1.0f, LocalDate.of(2026, 1, 1), null, 99L)))
                 .isInstanceOf(ProductCategoryNotFoundException.class);
     }
+
+    @Test
+    void storesStockProjectionPushedByInventory() {
+        Product product = new Product();
+        product.setIdProduit(5L);
+        when(repository.findById(5L)).thenReturn(Optional.of(product));
+        when(repository.save(org.mockito.ArgumentMatchers.any(Product.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProductResponse response = service.updateStockAssignment(5L, 9L);
+
+        assertThat(response.stockId()).isEqualTo(9L);
+        assertThat(product.getStockId()).isEqualTo(9L);
+    }
+
+    @Test
+    void clearsStockProjectionWhenInventoryReportsNoStock() {
+        Product product = new Product();
+        product.setIdProduit(5L);
+        product.setStockId(9L);
+        when(repository.findById(5L)).thenReturn(Optional.of(product));
+        when(repository.save(org.mockito.ArgumentMatchers.any(Product.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProductResponse response = service.updateStockAssignment(5L, null);
+
+        assertThat(response.stockId()).isNull();
+    }
+
+    @Test
+    void rejectsStockProjectionForUnknownProduct() {
+        when(repository.findById(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateStockAssignment(404L, 1L))
+                .isInstanceOf(ProductNotFoundException.class);
+    }
 }

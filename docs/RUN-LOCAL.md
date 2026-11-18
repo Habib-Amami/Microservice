@@ -262,8 +262,17 @@ curl -s -XPUT $BASE/produits/1/stock/$STID
 curl -s $BASE/stocks/$STID
 ```
 
-Product responses keep `stockId: null` by design; the link lives in
-inventory's `stock_product_assignments` table and is used internally.
+The assignment is owned by inventory-service (`stock_product_assignments`),
+which pushes it to product-service's read projection after saving. Product
+responses therefore expose `stockId`:
+
+```bash
+curl -s $BASE/produits/1        # {"idProduit":1,...,"stockId":<idStock>,...}
+```
+
+The projection is best-effort: if product-service is down during an
+assignment, the assignment is still saved in inventory and a warning is
+logged. Re-assign the product (or reseed) to repair it.
 
 ### 6.5 Invoices (procurement-service)
 
@@ -365,7 +374,7 @@ inventory-service.
 | Service starts, then exits asking for config | same — Config Server must be up before any client |
 | Config change has no effect | Config clients read at startup: restart Config Server **and** the affected services |
 | `404` on `http://localhost:8080/api` | expected; use a resource path such as `/api/produits` |
-| `stockId` is `null` in product responses | expected; stock membership is owned by inventory-service |
+| `stockId` is `null` in product responses | no stock was ever assigned, or the projection call failed (product-service was down). Check `inventory-service` log for `stock projection was not updated`, then re-assign (`PUT /api/produits/{id}/stock/{stockId}`) or reseed |
 | MySQL port conflict with a system server | keep `DB_PORT=3307` (default) or set another free port |
 | A component log is unreadable in the console | `scripts/run-stack.sh logs <component>` (`.run/logs/`) |
 

@@ -9,7 +9,9 @@ import org.example.achat.inventory.domain.StockProductAssignment;
 import org.example.achat.inventory.infrastructure.persistence.StockProductAssignmentRepository;
 import org.example.achat.inventory.infrastructure.persistence.StockRepository;
 import org.example.achat.inventory.infrastructure.product.ProductClient;
+import org.example.achat.inventory.infrastructure.product.ProductStockProjectionClient;
 import org.example.achat.inventory.infrastructure.product.dto.ProductResponse;
+import org.example.achat.inventory.infrastructure.product.dto.StockAssignmentRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,11 +44,15 @@ class StockServiceTest {
     @Mock
     private ProductClient productClient;
 
+    @Mock
+    private ProductStockProjectionClient projectionClient;
+
     private StockService stockService;
 
     @BeforeEach
     void setUp() {
-        stockService = new StockService(stockRepository, assignmentRepository, productClient);
+        stockService = new StockService(
+                stockRepository, assignmentRepository, productClient, projectionClient);
     }
 
     @Test
@@ -81,6 +88,23 @@ class StockServiceTest {
         verify(assignmentRepository).save(assignment.capture());
         assertThat(assignment.getValue().getProductId()).isEqualTo(11L);
         assertThat(assignment.getValue().getStock()).isSameAs(stock);
+        verify(projectionClient).assignStock(11L, new StockAssignmentRequest(7L));
+    }
+
+    @Test
+    void keepsAssignmentWhenStockProjectionUpdateFails() {
+        Stock stock = stock(7L, "Main warehouse", 20, 5);
+        ProductResponse product = new ProductResponse(11L, "P-11", "Paper", 2.5f, null, 4L);
+        when(productClient.getProduct(11L)).thenReturn(product);
+        when(stockRepository.findById(7L)).thenReturn(Optional.of(stock));
+        when(assignmentRepository.findFirstByProductId(11L)).thenReturn(null);
+        doThrow(FeignException.errorStatus("assignStock", response(503)))
+                .when(projectionClient).assignStock(11L, new StockAssignmentRequest(7L));
+
+        ProductResponse assigned = stockService.assignProduct(11L, 7L);
+
+        assertThat(assigned.stockId()).isEqualTo(7L);
+        verify(assignmentRepository).save(any(StockProductAssignment.class));
     }
 
     @Test

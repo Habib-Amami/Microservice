@@ -130,7 +130,11 @@ The Angular Stock screens use `/api/stocks` through the shared CRUD service. Onc
 
 The Product edit form also loads Stock records and calls the legacy assignment path through `ProduitService.assignStock`. That call can continue only if the specific Gateway compatibility route is installed. See `produit-form.ts` and `produit.service.ts`.
 
-There is a separate read-side limitation: Product Service currently returns `stockId: null`, so the form cannot prefill the existing assignment from Product reads. Preserving that user experience requires an approved Inventory-backed read model or composition contract; neither is implemented. The current form also does not submit an unassignment when a user selects “None.” These behaviors must be addressed explicitly rather than assumed to work after routing.
+The read-side gap described here is resolved: Product Service now stores the
+`stockId` pushed by Inventory as a read projection
+(`PUT /internal/v1/products/{id}/stock`, not routed by the Gateway), so the
+edit form can prefill the current assignment from Product reads. Unassignment
+(selecting “None”) is still not submitted by the form; that remains open.
 
 ## 9. Data migration plan
 
