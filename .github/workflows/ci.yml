@@ -31,14 +31,32 @@ jobs:
           - procurement-service
           - payment-service
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
           cache-dependency-path: '**/pom.xml'
+
+      # Every module uses the same wrapper. Cache its distribution and retry
+      # the download so a transient Maven Central failure does not fail CI.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.m2/wrapper/dists
+          key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('**/.mvn/wrapper/maven-wrapper.properties') }}
+
+      - name: Prime Maven wrapper
+        working-directory: ${{ matrix.module }}
+        run: |
+          for attempt in 1 2 3; do
+            if ./mvnw -v; then exit 0; fi
+            echo "Maven wrapper download failed (attempt $attempt); retrying"
+            sleep 5
+          done
+          echo "Could not download the Maven distribution"
+          exit 1
 
       - name: Verify ${{ matrix.module }}
         working-directory: ${{ matrix.module }}
@@ -52,9 +70,9 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
