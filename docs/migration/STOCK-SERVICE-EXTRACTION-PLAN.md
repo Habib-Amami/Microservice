@@ -133,9 +133,13 @@ The Product edit form also loads Stock records and calls the legacy assignment p
 The read-side gap described here is resolved: Product Service now stores the
 `stockId` pushed by Inventory as a read projection
 (`PUT /internal/v1/products/{id}/stock`, not routed by the Gateway), so the
-edit form can prefill the current assignment from Product reads. Inventory
-also exposes `DELETE /produits/{id}/stock` for unassignment; the form does not
-submit it when the user selects “None” yet, so that UI change remains open.
+form can prefill the current assignment from Product reads. The form requires
+a stock on both create and edit: no “None” option is offered, and submit is
+blocked when the field is empty. After saving, it calls
+`PUT /produits/{id}/stock/{stockId}` so Inventory remains the owner of the
+assignment. Inventory also exposes `DELETE /produits/{id}/stock` for API-level
+unassignment; the UI deliberately does not offer it because a product must
+belong to a stock.
 
 ## 9. Data migration plan
 

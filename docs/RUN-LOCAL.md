@@ -261,7 +261,8 @@ STID=$(curl -s -XPOST $BASE/stocks -H 'Content-Type: application/json' \
 curl -s -XPUT $BASE/produits/1/stock/$STID
 curl -s $BASE/stocks/$STID
 
-# unassign (the UI's "None" choice) — clears the projection too
+# API-only unassignment — clears the projection too. The Angular product form
+# never offers "None": a product must belong to a stock, on create and on edit.
 curl -s -XDELETE $BASE/produits/1/stock
 curl -s $BASE/produits/1        # "stockId": null
 ```

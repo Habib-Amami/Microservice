@@ -67,13 +67,12 @@ interface FormContext {
         <mat-form-field>
           <mat-label>Stock</mat-label>
           <mat-select formControlName="stockId">
-            @if (!context().data?.produit?.stockId) {
-              <mat-option [value]="null">None</mat-option>
-            }
             @for (stock of context().data?.stocks; track stock.idStock) {
               <mat-option [value]="stock.idStock">{{ stock.libelleStock }}</mat-option>
             }
           </mat-select>
+          <mat-hint>A product must belong to a stock.</mat-hint>
+          <mat-error>{{ fieldError(form.controls.stockId) }}</mat-error>
         </mat-form-field>
         <div class="form-actions">
           <button mat-flat-button type="submit" [disabled]="saving()">Save</button>
@@ -105,7 +104,7 @@ export default class ProduitForm implements OnInit {
     codeProduit: ['', [Validators.required, notBlank]],
     libelleProduit: ['', [Validators.required, notBlank]],
     prix: [0, [Validators.required, Validators.min(0)]],
-    stockId: [null as number | null],
+    stockId: [null as number | null, Validators.required],
   });
 
   ngOnInit(): void {
