@@ -24,6 +24,8 @@ import static org.mockito.Mockito.when;
 
 class InventoryResilienceGatewayTest {
 
+    private static final String KEY = "11111111-1111-1111-1111-111111111111";
+
     private final InventoryClient client = mock(InventoryClient.class);
     private final InventoryResilienceGateway gateway = new InventoryResilienceGateway(client);
 
@@ -50,12 +52,12 @@ class InventoryResilienceGatewayTest {
         StockResponse stock = new StockResponse(3L, "Main warehouse", 10, 2);
         ProductResponse assigned = new ProductResponse(8L, "P-1", "Pen", 1.5f, 3L, null);
         when(client.getStock(3L)).thenReturn(stock);
-        when(client.assignStock(8L, 3L)).thenReturn(assigned);
+        when(client.assignStock(8L, 3L, KEY)).thenReturn(assigned);
 
         assertThat(gateway.getStock(3L)).isEqualTo(stock);
-        assertThat(gateway.assignStock(8L, 3L)).isEqualTo(assigned);
+        assertThat(gateway.assignStock(8L, 3L, KEY)).isEqualTo(assigned);
         verify(client).getStock(3L);
-        verify(client).assignStock(8L, 3L);
+        verify(client).assignStock(8L, 3L, KEY);
     }
 
     @Test
@@ -86,9 +88,9 @@ class InventoryResilienceGatewayTest {
 
     @Test
     void assignmentFallbackMapsBothFailureKinds() {
-        assertThatThrownBy(() -> gateway.assignmentFallback(8L, 3L, inventoryError(404)))
+        assertThatThrownBy(() -> gateway.assignmentFallback(8L, 3L, KEY, inventoryError(404)))
                 .isInstanceOf(StockNotFoundException.class);
-        assertThatThrownBy(() -> gateway.assignmentFallback(8L, 3L, inventoryError(503)))
+        assertThatThrownBy(() -> gateway.assignmentFallback(8L, 3L, KEY, inventoryError(503)))
                 .isInstanceOf(InventoryServiceUnavailableException.class)
                 .hasMessageContaining("Could not assign the product to stock 3");
     }
@@ -96,8 +98,8 @@ class InventoryResilienceGatewayTest {
     @Test
     void bothOperationsAreProtectedByAllThreeResiliencePolicies() throws Exception {
         assertPolicies(InventoryResilienceGateway.class.getMethod("getStock", Long.class), "stockFallback");
-        assertPolicies(InventoryResilienceGateway.class.getMethod("assignStock", Long.class, Long.class),
-                "assignmentFallback");
+        assertPolicies(InventoryResilienceGateway.class.getMethod(
+                "assignStock", Long.class, Long.class, String.class), "assignmentFallback");
     }
 
     private static void assertPolicies(Method method, String fallback) {

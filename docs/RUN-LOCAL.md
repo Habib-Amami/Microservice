@@ -203,6 +203,19 @@ curl -s $BASE/produits | head -c 200
 
 A bare `GET /api` returns `404` — that is expected; routes are per resource.
 
+Every route has an inbound rate limit (Resilience4j token bucket, 20 requests
+per second per client IP by default; see `gateway.rate-limit` in
+`config-repo/api-gateway.yml`). Allowed responses carry `X-RateLimit-Limit` and
+`X-RateLimit-Remaining`; beyond the limit the gateway returns `429` with those
+headers plus `Retry-After`. For a quick check:
+
+```bash
+for i in $(seq 1 30); do
+  curl -s -o /dev/null -w '%{http_code} ' $BASE/stocks
+done
+echo                              # e.g. 20x 200 then 10x 429
+```
+
 ### 6.2 Product catalog (product-service)
 
 ```bash
@@ -280,6 +293,21 @@ curl -s $BASE/produits/1        # {"idProduit":1,...,"stockId":<idStock>,...}
 The projection is best-effort: if product-service is down during an
 assignment, the assignment is still saved in inventory and a warning is
 logged. Re-assign the product (or reseed) to repair it.
+
+When a product is created, product-service generates a UUID `Idempotency-Key`
+and passes it through the Resilience4j retry to this assignment route.
+Inventory stores it in `assignment_idempotency_keys` (Flyway V2, unique key) in
+the same transaction as the assignment. Replaying a key for the same
+product/stock returns `200` without writing again; reusing it for a different
+assignment returns `409`:
+
+```bash
+KEY=$(python3 -c 'import uuid;print(uuid.uuid4())')
+curl -s -XPUT $BASE/produits/1/stock/$STID -H "Idempotency-Key: $KEY"  # 200
+curl -s -XPUT $BASE/produits/1/stock/$STID -H "Idempotency-Key: $KEY"  # 200 replay
+curl -s -o /dev/null -w 'conflict -> %{http_code}\n' \
+  -XPUT $BASE/produits/2/stock/$STID -H "Idempotency-Key: $KEY"       # 409
+```
 
 Assignments are owned by inventory. Product deletion happens in
 product-service, so a deleted product can leave a stale assignment; inventory

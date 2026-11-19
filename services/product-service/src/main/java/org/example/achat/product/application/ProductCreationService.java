@@ -1,5 +1,7 @@
 package org.example.achat.product.application;
 
+import java.util.UUID;
+
 import org.example.achat.product.api.dto.ProductCreateRequest;
 import org.example.achat.product.api.dto.ProductRequest;
 import org.example.achat.product.api.dto.ProductResponse;
@@ -20,7 +22,8 @@ import org.springframework.stereotype.Service;
  * <p>Every inventory call goes through {@link InventoryResilienceGateway},
  * which applies the configured Resilience4j retry, rate limiter, circuit
  * breaker and fallback and translates failures into the domain exceptions
- * handled by {@code ProductExceptionHandler}.
+ * handled by {@code ProductExceptionHandler}. The assignment carries a freshly
+ * generated idempotency key so the retry of a lost response is safe.
  */
 @Service
 public class ProductCreationService {
@@ -51,10 +54,17 @@ public class ProductCreationService {
                 request.dateDerniereModification(),
                 request.categorieProduitId()));
 
+        // One key per logical creation. Resilience4j reuses it across retries
+        // of the assignment call, so Inventory can recognise a lost-response
+        // replay and skip the second write and projection push.
+        String idempotencyKey = UUID.randomUUID().toString();
+        log.debug("Assigning product {} to stock {} with idempotency key {}",
+                created.idProduit(), request.stockId(), idempotencyKey);
+
         try {
             // Inventory saves the assignment and pushes stockId back into this
             // service's read projection.
-            return inventory.assignStock(created.idProduit(), request.stockId());
+            return inventory.assignStock(created.idProduit(), request.stockId(), idempotencyKey);
         } catch (InventoryServiceUnavailableException | StockNotFoundException exception) {
             // Never leave a stockless product behind. If Inventory committed
             // but the response was lost, this leaves a stale assignment row,

@@ -1,15 +1,20 @@
 package org.example.achat.product.application;
 
+import java.util.UUID;
+
 import org.example.achat.product.api.dto.ProductCreateRequest;
 import org.example.achat.product.api.dto.ProductResponse;
 import org.example.achat.product.infrastructure.inventory.InventoryResilienceGateway;
 import org.example.achat.product.infrastructure.inventory.dto.StockResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -33,7 +38,7 @@ class ProductCreationServiceTest {
         ProductResponse assigned = new ProductResponse(8L, "P-1", "Pen", 1.5f, 3L, null);
         when(inventory.getStock(3L)).thenReturn(new StockResponse(3L, "Main warehouse", 10, 2));
         when(products.create(any())).thenReturn(created);
-        when(inventory.assignStock(8L, 3L)).thenReturn(assigned);
+        when(inventory.assignStock(eq(8L), eq(3L), anyString())).thenReturn(assigned);
 
         ProductResponse result = service.create(request(3L));
 
@@ -41,7 +46,9 @@ class ProductCreationServiceTest {
         InOrder order = inOrder(inventory, products);
         order.verify(inventory).getStock(3L);
         order.verify(products).create(any());
-        order.verify(inventory).assignStock(8L, 3L);
+        ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
+        order.verify(inventory).assignStock(eq(8L), eq(3L), key.capture());
+        assertThat(UUID.fromString(key.getValue())).isNotNull();
     }
 
     @Test
@@ -52,7 +59,7 @@ class ProductCreationServiceTest {
                 .isInstanceOf(StockNotFoundException.class)
                 .hasMessage("Stock not found with id: 404");
         verifyNoInteractions(products);
-        verify(inventory, never()).assignStock(any(), any());
+        verify(inventory, never()).assignStock(any(), any(), any());
     }
 
     @Test
@@ -70,7 +77,7 @@ class ProductCreationServiceTest {
         ProductResponse created = new ProductResponse(8L, "P-1", "Pen", 1.5f, null, null);
         when(inventory.getStock(3L)).thenReturn(new StockResponse(3L, "Main warehouse", 10, 2));
         when(products.create(any())).thenReturn(created);
-        when(inventory.assignStock(8L, 3L))
+        when(inventory.assignStock(eq(8L), eq(3L), anyString()))
                 .thenThrow(new InventoryServiceUnavailableException("assignment failed"));
 
         assertThatThrownBy(() -> service.create(request(3L)))

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -60,8 +61,9 @@ public class StockController {
     @PutMapping("/produits/{productId}/stock/{stockId}")
     public ProductResponse assignProductToStock(
             @PathVariable Long productId,
-            @PathVariable Long stockId) {
-        return stockService.assignProduct(productId, stockId);
+            @PathVariable Long stockId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        return stockService.assignProduct(productId, stockId, idempotencyKey);
     }
 
     @DeleteMapping("/produits/{productId}/stock")

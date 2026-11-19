@@ -21,6 +21,10 @@ import org.springframework.stereotype.Component;
  * fallbacks translate transport failures into the domain exceptions already
  * handled by {@code ProductExceptionHandler}, so callers do not need to know
  * about Feign or Resilience4j.
+ *
+ * <p>{@link #assignStock} carries a caller-supplied idempotency key so every
+ * retry of the same logical write uses the same key and inventory-service can
+ * short-circuit a replay instead of applying the write twice.
  */
 @Component
 public class InventoryResilienceGateway {
@@ -46,8 +50,8 @@ public class InventoryResilienceGateway {
     @Retry(name = INSTANCE, fallbackMethod = "assignmentFallback")
     @RateLimiter(name = INSTANCE, fallbackMethod = "assignmentFallback")
     @CircuitBreaker(name = INSTANCE, fallbackMethod = "assignmentFallback")
-    public ProductResponse assignStock(Long productId, Long stockId) {
-        return inventory.assignStock(productId, stockId);
+    public ProductResponse assignStock(Long productId, Long stockId, String idempotencyKey) {
+        return inventory.assignStock(productId, stockId, idempotencyKey);
     }
 
     /**
@@ -75,7 +79,8 @@ public class InventoryResilienceGateway {
      * Fallback for the assignment call. ProductCreationService rolls the
      * catalog row back whenever this throws.
      */
-    public ProductResponse assignmentFallback(Long productId, Long stockId, Throwable throwable) {
+    public ProductResponse assignmentFallback(Long productId, Long stockId, String idempotencyKey,
+                                              Throwable throwable) {
         Throwable cause = rootCause(throwable);
         if (cause instanceof FeignException.NotFound) {
             throw new StockNotFoundException(stockId);

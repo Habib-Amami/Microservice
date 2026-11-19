@@ -4,8 +4,10 @@ import feign.FeignException;
 import feign.Request;
 import feign.Response;
 import org.example.achat.inventory.api.dto.StockRequest;
+import org.example.achat.inventory.domain.AssignmentIdempotencyKey;
 import org.example.achat.inventory.domain.Stock;
 import org.example.achat.inventory.domain.StockProductAssignment;
+import org.example.achat.inventory.infrastructure.persistence.AssignmentIdempotencyKeyRepository;
 import org.example.achat.inventory.infrastructure.persistence.StockProductAssignmentRepository;
 import org.example.achat.inventory.infrastructure.persistence.StockRepository;
 import org.example.achat.inventory.infrastructure.product.ProductClient;
@@ -20,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,6 +45,9 @@ class StockServiceTest {
     private StockProductAssignmentRepository assignmentRepository;
 
     @Mock
+    private AssignmentIdempotencyKeyRepository idempotencyKeyRepository;
+
+    @Mock
     private ProductClient productClient;
 
     @Mock
@@ -52,7 +58,8 @@ class StockServiceTest {
     @BeforeEach
     void setUp() {
         stockService = new StockService(
-                stockRepository, assignmentRepository, productClient, projectionClient);
+                stockRepository, assignmentRepository, idempotencyKeyRepository,
+                productClient, projectionClient);
     }
 
     @Test
@@ -80,7 +87,7 @@ class StockServiceTest {
         when(stockRepository.findById(7L)).thenReturn(Optional.of(stock));
         when(assignmentRepository.findFirstByProductId(11L)).thenReturn(null);
 
-        ProductResponse assigned = stockService.assignProduct(11L, 7L);
+        ProductResponse assigned = stockService.assignProduct(11L, 7L, null);
 
         assertThat(assigned).isEqualTo(product.withStockId(7L));
         ArgumentCaptor<StockProductAssignment> assignment =
@@ -89,6 +96,54 @@ class StockServiceTest {
         assertThat(assignment.getValue().getProductId()).isEqualTo(11L);
         assertThat(assignment.getValue().getStock()).isSameAs(stock);
         verify(projectionClient).assignStock(11L, new StockAssignmentRequest(7L));
+    }
+
+    @Test
+    void recordsTheIdempotencyKeyWithTheAssignment() {
+        Stock stock = stock(7L, "Main warehouse", 20, 5);
+        ProductResponse product = new ProductResponse(11L, "P-11", "Paper", 2.5f, null, 4L);
+        when(productClient.getProduct(11L)).thenReturn(product);
+        when(stockRepository.findById(7L)).thenReturn(Optional.of(stock));
+        when(assignmentRepository.findFirstByProductId(11L)).thenReturn(null);
+
+        stockService.assignProduct(11L, 7L, "key-1");
+
+        ArgumentCaptor<AssignmentIdempotencyKey> key =
+                ArgumentCaptor.forClass(AssignmentIdempotencyKey.class);
+        verify(idempotencyKeyRepository).save(key.capture());
+        assertThat(key.getValue().getKeyValue()).isEqualTo("key-1");
+        assertThat(key.getValue().getProductId()).isEqualTo(11L);
+        assertThat(key.getValue().getStockId()).isEqualTo(7L);
+        assertThat(key.getValue().getCreatedAt()).isBeforeOrEqualTo(LocalDateTime.now());
+    }
+
+    @Test
+    void replaysAnAlreadyProcessedKeyWithoutWritingAgain() {
+        ProductResponse product = new ProductResponse(11L, "P-11", "Paper", 2.5f, 7L, 4L);
+        when(idempotencyKeyRepository.findByKeyValue("key-1"))
+                .thenReturn(Optional.of(idempotencyKey("key-1", 11L, 7L)));
+        when(productClient.getProduct(11L)).thenReturn(product);
+
+        ProductResponse replayed = stockService.assignProduct(11L, 7L, "key-1");
+
+        assertThat(replayed.stockId()).isEqualTo(7L);
+        verify(assignmentRepository, never()).save(any(StockProductAssignment.class));
+        verify(projectionClient, never()).assignStock(any(), any());
+        verify(stockRepository, never()).findById(7L);
+        verify(idempotencyKeyRepository, never()).save(any(AssignmentIdempotencyKey.class));
+    }
+
+    @Test
+    void rejectsReusingAKeyForAnotherAssignment() {
+        when(idempotencyKeyRepository.findByKeyValue("key-1"))
+                .thenReturn(Optional.of(idempotencyKey("key-1", 11L, 7L)));
+
+        assertThatThrownBy(() -> stockService.assignProduct(12L, 8L, "key-1"))
+                .isInstanceOf(IdempotencyKeyConflictException.class)
+                .hasMessageContaining("key-1");
+
+        verify(assignmentRepository, never()).save(any(StockProductAssignment.class));
+        verify(projectionClient, never()).assignStock(any(), any());
     }
 
     @Test
@@ -101,7 +156,7 @@ class StockServiceTest {
         doThrow(FeignException.errorStatus("assignStock", response(503)))
                 .when(projectionClient).assignStock(11L, new StockAssignmentRequest(7L));
 
-        ProductResponse assigned = stockService.assignProduct(11L, 7L);
+        ProductResponse assigned = stockService.assignProduct(11L, 7L, null);
 
         assertThat(assigned.stockId()).isEqualTo(7L);
         verify(assignmentRepository).save(any(StockProductAssignment.class));
@@ -111,7 +166,7 @@ class StockServiceTest {
     void rejectsAssignmentWhenProductServiceReturnsNotFound() {
         when(productClient.getProduct(404L)).thenThrow(productNotFound(404L));
 
-        assertThatThrownBy(() -> stockService.assignProduct(404L, 7L))
+        assertThatThrownBy(() -> stockService.assignProduct(404L, 7L, null))
                 .isInstanceOf(ProductNotFoundException.class)
                 .hasMessage("Product not found with id: 404");
 
@@ -124,7 +179,7 @@ class StockServiceTest {
         when(productClient.getProduct(11L)).thenThrow(
                 FeignException.errorStatus("getProduct", response(503)));
 
-        assertThatThrownBy(() -> stockService.assignProduct(11L, 7L))
+        assertThatThrownBy(() -> stockService.assignProduct(11L, 7L, null))
                 .isInstanceOf(ProductServiceUnavailableException.class);
 
         verify(assignmentRepository, never()).save(any(StockProductAssignment.class));
@@ -262,6 +317,15 @@ class StockServiceTest {
         assignment.setProductId(productId);
         assignment.setStock(stock);
         return assignment;
+    }
+
+    private static AssignmentIdempotencyKey idempotencyKey(String key, Long productId, Long stockId) {
+        AssignmentIdempotencyKey record = new AssignmentIdempotencyKey();
+        record.setKeyValue(key);
+        record.setProductId(productId);
+        record.setStockId(stockId);
+        record.setCreatedAt(LocalDateTime.now());
+        return record;
     }
 
     private static FeignException productNotFound(Long productId) {

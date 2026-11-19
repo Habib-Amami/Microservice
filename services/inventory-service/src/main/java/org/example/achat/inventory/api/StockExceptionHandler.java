@@ -1,5 +1,6 @@
 package org.example.achat.inventory.api;
 
+import org.example.achat.inventory.application.IdempotencyKeyConflictException;
 import org.example.achat.inventory.application.ProductNotFoundException;
 import org.example.achat.inventory.application.ProductServiceUnavailableException;
 import org.example.achat.inventory.application.StockInUseException;
@@ -29,6 +30,11 @@ public class StockExceptionHandler {
 
     @ExceptionHandler(StockInUseException.class)
     public ProblemDetail handleStockInUse(StockInUseException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyKeyConflictException.class)
+    public ProblemDetail handleIdempotencyKeyConflict(IdempotencyKeyConflictException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 }

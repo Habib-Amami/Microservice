@@ -1,6 +1,7 @@
 package org.example.achat.inventory.api;
 
 import org.example.achat.inventory.api.dto.StockRequest;
+import org.example.achat.inventory.application.IdempotencyKeyConflictException;
 import org.example.achat.inventory.application.ProductNotFoundException;
 import org.example.achat.inventory.application.ProductServiceUnavailableException;
 import org.example.achat.inventory.application.StockService;
@@ -96,7 +97,7 @@ class StockControllerTest {
 
     @Test
     void assignsAndReturnsProductInformation() throws Exception {
-        when(stockService.assignProduct(11L, 3L))
+        when(stockService.assignProduct(11L, 3L, null))
                 .thenReturn(new ProductResponse(11L, "P-11", "Paper", 2.5f, 3L, 4L));
 
         mockMvc.perform(put("/produits/11/stock/3"))
@@ -104,6 +105,29 @@ class StockControllerTest {
                 .andExpect(jsonPath("$.idProduit").value(11))
                 .andExpect(jsonPath("$.libelleProduit").value("Paper"))
                 .andExpect(jsonPath("$.stockId").value(3));
+    }
+
+    @Test
+    void forwardsTheIdempotencyKeyHeaderToTheService() throws Exception {
+        when(stockService.assignProduct(11L, 3L, "key-1"))
+                .thenReturn(new ProductResponse(11L, "P-11", "Paper", 2.5f, 3L, 4L));
+
+        mockMvc.perform(put("/produits/11/stock/3").header("Idempotency-Key", "key-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stockId").value(3));
+
+        verify(stockService).assignProduct(11L, 3L, "key-1");
+    }
+
+    @Test
+    void mapsIdempotencyKeyConflictToConflictStatus() throws Exception {
+        when(stockService.assignProduct(11L, 3L, "key-1"))
+                .thenThrow(new IdempotencyKeyConflictException("key-1"));
+
+        mockMvc.perform(put("/produits/11/stock/3").header("Idempotency-Key", "key-1"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value(
+                        "Idempotency key 'key-1' was already used for a different assignment"));
     }
 
     @Test
@@ -120,9 +144,9 @@ class StockControllerTest {
 
     @Test
     void mapsMissingProductAndUnavailableProductService() throws Exception {
-        when(stockService.assignProduct(404L, 3L))
+        when(stockService.assignProduct(404L, 3L, null))
                 .thenThrow(new ProductNotFoundException(404L));
-        when(stockService.assignProduct(11L, 3L))
+        when(stockService.assignProduct(11L, 3L, null))
                 .thenThrow(new ProductServiceUnavailableException(new RuntimeException()));
 
         mockMvc.perform(put("/produits/404/stock/3"))

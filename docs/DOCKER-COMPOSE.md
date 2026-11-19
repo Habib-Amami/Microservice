@@ -126,6 +126,42 @@ The base `compose.yaml` deliberately pins container names and host ports for a
 stable demo, which is why scaling requires the overlay. The overlay needs Docker
 Compose >= 2.24 for the `!reset` YAML tag.
 
+### 4.2 Gateway rate limiting and idempotent writes
+
+Every route has a `RequestRateLimiter` default filter. `ClientIpKeyResolver`
+buckets by client IP and `InboundRateLimiter` uses a Resilience4j token bucket
+configured in `config-repo/api-gateway.yml` (`gateway.rate-limit`, default 20
+requests per 1s window; override the count with `GATEWAY_RATE_LIMIT`). A denied
+request returns `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+`Retry-After`; allowed requests carry the first two headers. To reproduce the
+check (run it just after a window boundary to avoid mixing two windows):
+
+```bash
+for i in $(seq 1 30); do
+  curl -s -o /dev/null -w '%{http_code} ' http://localhost:8080/api/stocks
+done
+echo
+```
+
+Observed: 20 `200` followed by 10 `429` (after an earlier request had consumed
+one token in the same window, 19 + 11). The gateway needs no Redis or Bucket4j
+proxy manager for this.
+
+The retried Product → Inventory assignment is idempotent: Product generates a
+UUID `Idempotency-Key` and Inventory stores it in
+`inventory_db.assignment_idempotency_keys` (Flyway V2, unique constraint). A
+replayed key skips the write and projection push; reusing it for a different
+product/stock returns `409`:
+
+```bash
+curl -i -X PUT http://localhost:8083/produits/1/stock/1 \
+  -H 'Idempotency-Key: demo-key-123'   # first: 200, stores the key
+curl -i -X PUT http://localhost:8083/produits/1/stock/1 \
+  -H 'Idempotency-Key: demo-key-123'   # replay: 200, no new row
+curl -i -X PUT http://localhost:8083/produits/1/stock/2 \
+  -H 'Idempotency-Key: demo-key-123'   # conflict: 409
+```
+
 ## 5. Tracing, metrics and logs demo
 
 1. Generate traffic: open the UI at <http://localhost:4200>, click through the

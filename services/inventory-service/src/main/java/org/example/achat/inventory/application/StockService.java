@@ -2,8 +2,10 @@ package org.example.achat.inventory.application;
 
 import feign.FeignException;
 import org.example.achat.inventory.api.dto.StockRequest;
+import org.example.achat.inventory.domain.AssignmentIdempotencyKey;
 import org.example.achat.inventory.domain.Stock;
 import org.example.achat.inventory.domain.StockProductAssignment;
+import org.example.achat.inventory.infrastructure.persistence.AssignmentIdempotencyKeyRepository;
 import org.example.achat.inventory.infrastructure.persistence.StockProductAssignmentRepository;
 import org.example.achat.inventory.infrastructure.persistence.StockRepository;
 import org.example.achat.inventory.infrastructure.product.ProductClient;
@@ -15,7 +17,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class StockService {
@@ -24,16 +28,19 @@ public class StockService {
 
     private final StockRepository stockRepository;
     private final StockProductAssignmentRepository assignmentRepository;
+    private final AssignmentIdempotencyKeyRepository idempotencyKeyRepository;
     private final ProductClient productClient;
     private final ProductStockProjectionClient projectionClient;
 
     public StockService(
             StockRepository stockRepository,
             StockProductAssignmentRepository assignmentRepository,
+            AssignmentIdempotencyKeyRepository idempotencyKeyRepository,
             ProductClient productClient,
             ProductStockProjectionClient projectionClient) {
         this.stockRepository = stockRepository;
         this.assignmentRepository = assignmentRepository;
+        this.idempotencyKeyRepository = idempotencyKeyRepository;
         this.productClient = productClient;
         this.projectionClient = projectionClient;
     }
@@ -97,8 +104,32 @@ public class StockService {
         stockRepository.deleteById(stockId);
     }
 
+    /**
+     * Registers (or replays) a product-to-stock assignment.
+     *
+     * <p>Product-service retries this call with the same {@code Idempotency-Key}
+     * when a response is lost. If the key was already committed, the write and
+     * the projection push are skipped and the previous result is replayed. The
+     * key is saved in the same transaction as the assignment, and the unique
+     * database constraint protects against concurrent duplicates.
+     */
     @Transactional
-    public ProductResponse assignProduct(Long productId, Long stockId) {
+    public ProductResponse assignProduct(Long productId, Long stockId, String idempotencyKey) {
+        boolean hasKey = idempotencyKey != null && !idempotencyKey.isBlank();
+        if (hasKey) {
+            Optional<AssignmentIdempotencyKey> previous =
+                    idempotencyKeyRepository.findByKeyValue(idempotencyKey);
+            if (previous.isPresent()) {
+                AssignmentIdempotencyKey record = previous.get();
+                if (!record.getProductId().equals(productId) || !record.getStockId().equals(stockId)) {
+                    throw new IdempotencyKeyConflictException(idempotencyKey);
+                }
+                log.info("Idempotency key {} already applied to product {} / stock {}; replaying result",
+                        idempotencyKey, productId, stockId);
+                return findProduct(productId).withStockId(stockId);
+            }
+        }
+
         ProductResponse product = findProduct(productId);
         Stock stock = findById(stockId);
 
@@ -110,6 +141,15 @@ public class StockService {
         assignment.setStock(stock);
         assignmentRepository.save(assignment);
         projectStockAssignment(productId, stockId);
+
+        if (hasKey) {
+            AssignmentIdempotencyKey record = new AssignmentIdempotencyKey();
+            record.setKeyValue(idempotencyKey);
+            record.setProductId(productId);
+            record.setStockId(stockId);
+            record.setCreatedAt(LocalDateTime.now());
+            idempotencyKeyRepository.save(record);
+        }
 
         return product.withStockId(stockId);
     }
