@@ -180,7 +180,7 @@ Each proposed package remains within a standalone `product-service` build;
 it is not added to the infrastructure Maven reactor.
 
 ```text
-product-service/
+services/product-service/
   pom.xml
   mvnw
   mvnw.cmd

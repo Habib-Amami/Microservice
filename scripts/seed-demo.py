@@ -33,12 +33,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Each service owns its seed files under src/main/resources/seed/.
 SEED_DIRS = {
-    "supplier": PROJECT_ROOT / "supplier-service/src/main/resources/seed",
-    "user": PROJECT_ROOT / "user-service/src/main/resources/seed",
-    "product": PROJECT_ROOT / "product-service/src/main/resources/seed",
-    "inventory": PROJECT_ROOT / "inventory-service/src/main/resources/seed",
-    "procurement": PROJECT_ROOT / "procurement-service/src/main/resources/seed",
-    "payment": PROJECT_ROOT / "payment-service/src/main/resources/seed",
+    "supplier": PROJECT_ROOT / "services/supplier-service/src/main/resources/seed",
+    "user": PROJECT_ROOT / "services/user-service/src/main/resources/seed",
+    "product": PROJECT_ROOT / "services/product-service/src/main/resources/seed",
+    "inventory": PROJECT_ROOT / "services/inventory-service/src/main/resources/seed",
+    "procurement": PROJECT_ROOT / "services/procurement-service/src/main/resources/seed",
+    "payment": PROJECT_ROOT / "services/payment-service/src/main/resources/seed",
 }
 
 # Collections checked to decide whether the target stack already has data.

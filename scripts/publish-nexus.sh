@@ -24,8 +24,9 @@ if [ -z "$NEXUS_USER" ] || [ -z "$NEXUS_PASSWORD" ]; then
 fi
 
 modules=(infrastructure infrastructure/config-server infrastructure/discovery-server
-         infrastructure/api-gateway product-service inventory-service
-         supplier-service user-service procurement-service payment-service)
+         infrastructure/api-gateway services/product-service services/inventory-service
+         services/supplier-service services/user-service services/procurement-service
+         services/payment-service)
 deploy_url="${NEXUS_URL%/}/repository/${NEXUS_REPO}/"
 printf 'Publishing to %s\n' "$deploy_url"
 

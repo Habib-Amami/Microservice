@@ -23,12 +23,12 @@ jobs:
       matrix:
         module:
           - infrastructure
-          - product-service
-          - inventory-service
-          - supplier-service
-          - user-service
-          - procurement-service
-          - payment-service
+          - services/product-service
+          - services/inventory-service
+          - services/supplier-service
+          - services/user-service
+          - services/procurement-service
+          - services/payment-service
     steps:
       - uses: actions/checkout@v7
 
@@ -117,7 +117,7 @@ jobs:
           key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('**/.mvn/wrapper/maven-wrapper.properties') }}
 
       - name: Prime Maven wrapper
-        working-directory: product-service
+        working-directory: services/product-service
         run: ./mvnw -v
 
       - name: SonarQube analysis

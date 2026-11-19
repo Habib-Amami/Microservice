@@ -18,8 +18,9 @@ PREFIX="${SONAR_PROJECT_PREFIX:-achat}"
 PLUGIN="org.sonarsource.scanner.maven:sonar-maven-plugin:5.9.0.7382:sonar"
 
 modules=(infrastructure/config-server infrastructure/discovery-server
-         infrastructure/api-gateway product-service inventory-service
-         supplier-service user-service procurement-service payment-service)
+         infrastructure/api-gateway services/product-service services/inventory-service
+         services/supplier-service services/user-service services/procurement-service
+         services/payment-service)
 runners=(../mvnw ../mvnw ../mvnw ./mvnw ./mvnw ./mvnw ./mvnw ./mvnw ./mvnw)
 
 if [ -z "$SONAR_TOKEN" ]; then
@@ -30,7 +31,9 @@ printf 'SonarQube: %s\n' "$SONAR_URL"
 failures=0
 for i in "${!modules[@]}"; do
   module="${modules[$i]}"
-  key="$PREFIX-${module//\//-}"
+  # Keep historical Sonar project keys stable after the services/ move.
+  key_module="${module#services/}"
+  key="$PREFIX-${key_module//\//-}"
   printf '\n=== analysing %s ===\n' "$module"
   args=(
     -B -ntp "$PLUGIN"

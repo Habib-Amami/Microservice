@@ -1,6 +1,7 @@
 # Demo data seeding
 
-Each service owns its demo dataset in `src/main/resources/seed/`.
+Each business service owns its demo dataset in
+`services/<service>/src/main/resources/seed/`.
 `seed-demo.py` is a thin orchestrator: it reads
 those files, calls the owning service through the API Gateway in dependency
 order, and resolves business codes to the IDs each service returns.

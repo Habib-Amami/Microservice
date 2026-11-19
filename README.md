@@ -32,18 +32,23 @@ customer e-commerce application.
 
 ## Applications and local ports
 
+The repository groups the six business services under `services/`, the
+platform applications (Config Server, Eureka, Gateway) under `infrastructure/`,
+and shared configuration, docs and tooling under `config-repo/`, `docs/` and
+`scripts/`. Each folder remains an independent Maven build.
+
 | Component | Folder | Default port | Purpose |
 |---|---|---:|---|
 | MySQL | Docker (see runbook) or local install | 3307 / 3306 | Service databases |
 | Config Server | `infrastructure/config-server/` | 8888 | Native config from `config-repo/` |
 | Eureka Discovery Server | `infrastructure/discovery-server/` | 8761 | Service registry |
 | API Gateway | `infrastructure/api-gateway/` | 8080 | Single entry point for `/api/**` |
-| Product Service | `product-service/` | 8082 | Products, product categories |
-| Inventory Service | `inventory-service/` | 8083 | Stocks, product→stock links |
-| Supplier Service | `supplier-service/` | 8084 | Suppliers, activity sectors |
-| User Service | `user-service/` | 8085 | Operators |
-| Procurement Service | `procurement-service/` | 8086 | Invoices and lines |
-| Payment Service | `payment-service/` | 8087 | Settlements, recovery rate |
+| Product Service | `services/product-service/` | 8082 | Products, product categories |
+| Inventory Service | `services/inventory-service/` | 8083 | Stocks, product→stock links |
+| Supplier Service | `services/supplier-service/` | 8084 | Suppliers, activity sectors |
+| User Service | `services/user-service/` | 8085 | Operators |
+| Procurement Service | `services/procurement-service/` | 8086 | Invoices and lines |
+| Payment Service | `services/payment-service/` | 8087 | Settlements, recovery rate |
 | Angular UI | `frontend/` | 4200 | Browser UI (proxies `/api` to 8080) |
 
 All applications use Java 21, Spring Boot 4.0.9, and Spring Cloud 2025.1.4.
@@ -146,7 +151,7 @@ $env:PRODUCT_SERVICE_PORT = "8082"
 $env:PRODUCT_DB_URL = "jdbc:mysql://localhost:3307/product_db?createDatabaseIfNotExist=true&serverTimezone=UTC"
 $env:PRODUCT_DB_USERNAME = "<your-local-product-db-user>"
 $env:PRODUCT_DB_PASSWORD = "<your-local-product-db-password>"
-Push-Location .\product-service
+Push-Location .\services\product-service
 .\mvnw.cmd clean verify
 .\mvnw.cmd spring-boot:run
 ```
@@ -184,9 +189,9 @@ See [scripts/README.md](scripts/README.md) for details.
 Run each project's independent verification from its own folder:
 
 ```powershell
-foreach ($m in @('infrastructure','product-service','inventory-service',
-                 'supplier-service','user-service','procurement-service',
-                 'payment-service')) {
+foreach ($m in @('infrastructure','services/product-service','services/inventory-service',
+                 'services/supplier-service','services/user-service','services/procurement-service',
+                 'services/payment-service')) {
   Push-Location $m; .\mvnw.cmd clean verify; Pop-Location
 }
 Push-Location .\frontend
@@ -241,7 +246,7 @@ the images and does not use these host artifacts.
 - [Microservices implementation status](docs/MICROSERVICES-IMPLEMENTATION-STATUS.md)
 - [Infrastructure startup and Gateway details](infrastructure/README.md)
 - [Angular setup and troubleshooting](frontend/README.md)
-- [Per-service setup notes](product-service/README.md)
+- [Per-service setup notes](services/product-service/README.md)
 - [Migration architecture and validation documents](docs/migration/README.md) —
   historical design/baseline records; the legacy monolith they describe was
   removed after migration.

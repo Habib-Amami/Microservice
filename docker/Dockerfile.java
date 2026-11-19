@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Multistage build for one Spring Boot application at a time. Compose passes
-# MODULE (e.g. product-service or infrastructure/api-gateway).
+# MODULE (e.g. services/product-service or infrastructure/api-gateway).
 #
 # Optimisations:
 #   1. Only the selected module's POM + sources are copied, so a change in the

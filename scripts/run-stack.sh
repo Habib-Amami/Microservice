@@ -36,8 +36,8 @@ names=(config-server discovery-server api-gateway
        product-service inventory-service supplier-service
        user-service procurement-service payment-service)
 dirs=(infrastructure/config-server infrastructure/discovery-server infrastructure/api-gateway
-      product-service inventory-service supplier-service
-      user-service procurement-service payment-service)
+      services/product-service services/inventory-service services/supplier-service
+      services/user-service services/procurement-service services/payment-service)
 # Infrastructure modules share the wrapper one level up.
 runners=(../mvnw ../mvnw ../mvnw
          ./mvnw ./mvnw ./mvnw ./mvnw ./mvnw ./mvnw)

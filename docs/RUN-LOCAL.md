@@ -105,32 +105,32 @@ export EUREKA_CLIENT_SERVICE_URL_DEFAULT_ZONE=http://localhost:8761/eureka/
 export DB="jdbc:mysql://localhost:3307"
 
 # product-service — port 8082
-cd product-service
+cd services/product-service
 PRODUCT_DB_URL="$DB/product_db?createDatabaseIfNotExist=true&serverTimezone=UTC" \
 PRODUCT_DB_USERNAME=root PRODUCT_DB_PASSWORD=root ./mvnw spring-boot:run
 
 # inventory-service — port 8083
-cd inventory-service
+cd services/inventory-service
 INVENTORY_DB_URL="$DB/inventory_db?createDatabaseIfNotExist=true&serverTimezone=UTC" \
 INVENTORY_DB_USERNAME=root INVENTORY_DB_PASSWORD=root ./mvnw spring-boot:run
 
 # supplier-service — port 8084
-cd supplier-service
+cd services/supplier-service
 SUPPLIER_DB_URL="$DB/supplier_db?createDatabaseIfNotExist=true&serverTimezone=UTC" \
 SUPPLIER_DB_USERNAME=root SUPPLIER_DB_PASSWORD=root ./mvnw spring-boot:run
 
 # user-service — port 8085
-cd user-service
+cd services/user-service
 USER_DB_URL="$DB/user_db?createDatabaseIfNotExist=true&serverTimezone=UTC" \
 USER_DB_USERNAME=root USER_DB_PASSWORD=root ./mvnw spring-boot:run
 
 # procurement-service — port 8086
-cd procurement-service
+cd services/procurement-service
 PROCUREMENT_DB_URL="$DB/procurement_db?createDatabaseIfNotExist=true&serverTimezone=UTC" \
 PROCUREMENT_DB_USERNAME=root PROCUREMENT_DB_PASSWORD=root ./mvnw spring-boot:run
 
 # payment-service — port 8087
-cd payment-service
+cd services/payment-service
 PAYMENT_DB_URL="$DB/payment_db?createDatabaseIfNotExist=true&serverTimezone=UTC" \
 PAYMENT_DB_USERNAME=root PAYMENT_DB_PASSWORD=root ./mvnw spring-boot:run
 ```

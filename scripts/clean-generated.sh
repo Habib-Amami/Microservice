@@ -19,12 +19,12 @@ PATHS=(
   infrastructure/api-gateway/target
   infrastructure/config-server/target
   infrastructure/discovery-server/target
-  product-service/target
-  inventory-service/target
-  supplier-service/target
-  user-service/target
-  procurement-service/target
-  payment-service/target
+  services/product-service/target
+  services/inventory-service/target
+  services/supplier-service/target
+  services/user-service/target
+  services/procurement-service/target
+  services/payment-service/target
   frontend/node_modules
   frontend/dist
   frontend/.angular

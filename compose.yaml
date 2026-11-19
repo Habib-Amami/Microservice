@@ -136,7 +136,7 @@ services:
     build:
       <<: *java-build
       args:
-        MODULE: product-service
+        MODULE: services/product-service
     container_name: achat-product-service
     environment:
       <<: *observability-env
@@ -167,7 +167,7 @@ services:
     build:
       <<: *java-build
       args:
-        MODULE: inventory-service
+        MODULE: services/inventory-service
     container_name: achat-inventory-service
     environment:
       <<: *observability-env
@@ -198,7 +198,7 @@ services:
     build:
       <<: *java-build
       args:
-        MODULE: supplier-service
+        MODULE: services/supplier-service
     container_name: achat-supplier-service
     environment:
       <<: *observability-env
@@ -229,7 +229,7 @@ services:
     build:
       <<: *java-build
       args:
-        MODULE: user-service
+        MODULE: services/user-service
     container_name: achat-user-service
     environment:
       <<: *observability-env
@@ -260,7 +260,7 @@ services:
     build:
       <<: *java-build
       args:
-        MODULE: procurement-service
+        MODULE: services/procurement-service
     container_name: achat-procurement-service
     environment:
       <<: *observability-env
@@ -295,7 +295,7 @@ services:
     build:
       <<: *java-build
       args:
-        MODULE: payment-service
+        MODULE: services/payment-service
     container_name: achat-payment-service
     environment:
       <<: *observability-env

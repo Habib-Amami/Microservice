@@ -45,12 +45,12 @@ supplier invoices as customer orders.
 | Infrastructure | Independent Maven reactor in `infrastructure/`: Config Server, Eureka Discovery Server, and API Gateway. Java 21, Spring Boot 4.0.9, Spring Cloud 2025.1.4. |
 | Gateway | Port 8080; explicit `lb://` routes exist for Product, Inventory, Supplier, User, Procurement, and Payment legacy prefixes, including the legacy recovery-rate URL routed to Payment and `/api/cqrs/factures/**` routed to Procurement's CQRS API. Unmatched `/api/**` and `/api/internal/**` return `404`; there is no fallback application. Automatic discovery routes remain disabled. Route configuration is not production cutover acceptance. |
 | Angular development proxy | `frontend/proxy.conf.json` forwards `/api` unchanged to `http://localhost:8080`; it does not strip `/api`. |
-| Product Service | Standalone `product-service/`, port 8082; Product/Category CRUD, Flyway, Config Client, and Eureka Client. Inventory calls pass through `InventoryResilienceGateway` (Resilience4j retry, rate limiter, circuit breaker, typed fallbacks). Product stock assignment remains owned by Inventory. |
-| Inventory Service | Standalone `inventory-service/`, port 8083; stock CRUD/product assignment, Feign Product lookup, Flyway, Config Client, and Eureka Client. Advanced positions, movements, reservations, and receiving remain unimplemented. |
-| Supplier Service | Standalone `supplier-service/`, port 8084; supplier/sector CRUD, sector assignment, Procurement lookup, independent Flyway schema, Config Client, and Eureka Client. Performance projections remain unimplemented. |
-| User Service | Standalone `user-service/`, port 8085; operator CRUD and hashed credential storage, independent Flyway schema, Config Client, and Eureka Client. Authentication, tokens, roles/permissions, and authorization remain unimplemented. |
-| Procurement Service | Standalone `procurement-service/`, port 8086; invoice and line persistence, archive, operator assignment, product snapshots, and Feign Product/Supplier/User calls. In-service **CQRS/Axon** is implemented under `/cqrs/factures` (commands, events, projector, Axon Server in Compose). Payment eligibility/total query endpoints are internal; Procurement does not call Payment. Inventory receiving and the approved lifecycle remain unimplemented. |
-| Payment Service | Standalone `payment-service/`, port 8087; settlement CRUD/reporting with scalar invoice IDs, Feign Procurement eligibility/total lookups, and the legacy recovery-rate URL. Invoice eligibility rejects missing/archived invoices; amount-limit policy, idempotency/reconciliation, and auth remain unimplemented. |
+| Product Service | Standalone `services/product-service/`, port 8082; Product/Category CRUD, Flyway, Config Client, and Eureka Client. Inventory calls pass through `InventoryResilienceGateway` (Resilience4j retry, rate limiter, circuit breaker, typed fallbacks). Product stock assignment remains owned by Inventory. |
+| Inventory Service | Standalone `services/inventory-service/`, port 8083; stock CRUD/product assignment, Feign Product lookup, Flyway, Config Client, and Eureka Client. Advanced positions, movements, reservations, and receiving remain unimplemented. |
+| Supplier Service | Standalone `services/supplier-service/`, port 8084; supplier/sector CRUD, sector assignment, Procurement lookup, independent Flyway schema, Config Client, and Eureka Client. Performance projections remain unimplemented. |
+| User Service | Standalone `services/user-service/`, port 8085; operator CRUD and hashed credential storage, independent Flyway schema, Config Client, and Eureka Client. Authentication, tokens, roles/permissions, and authorization remain unimplemented. |
+| Procurement Service | Standalone `services/procurement-service/`, port 8086; invoice and line persistence, archive, operator assignment, product snapshots, and Feign Product/Supplier/User calls. In-service **CQRS/Axon** is implemented under `/cqrs/factures` (commands, events, projector, Axon Server in Compose). Payment eligibility/total query endpoints are internal; Procurement does not call Payment. Inventory receiving and the approved lifecycle remain unimplemented. |
+| Payment Service | Standalone `services/payment-service/`, port 8087; settlement CRUD/reporting with scalar invoice IDs, Feign Procurement eligibility/total lookups, and the legacy recovery-rate URL. Invoice eligibility rejects missing/archived invoices; amount-limit policy, idempotency/reconciliation, and auth remain unimplemented. |
 | Cross-cutting | Distributed tracing via **Zipkin** (replacing Jaeger) in all seven Maven modules; **Prometheus/Grafana** and **Loki/Promtail** in the default Compose profile. Host-based `scripts/run-stack.sh` disables trace export and Axon Server. |
 | Legacy source database | The retired monolith used MySQL and Hibernate `ddl-auto=update`; its deployed DDL/data were never verified. Legacy entity-based table names below are historical inferences, not confirmed physical schema. Each current service owns a separate Flyway-managed MySQL database. |
 
@@ -459,7 +459,7 @@ test was skipped because Docker is unavailable. The four newly added services
 have embedded HTTP/JPA tests using H2 with Flyway disabled. No new-service V1
 migration has been validated against MySQL, and no source-to-target import has
 been executed. The import template in
-`product-service/scripts/migration/` is not an authorization to run it.
+`services/product-service/scripts/migration/` is not an authorization to run it.
 
 ### Monetary values and quantities
 
@@ -861,8 +861,8 @@ Gateway smoke flow are validated separately through
 - [Gateway route configuration (config-repo)](config-repo/api-gateway.yml)
 - [Product Service configuration (config-repo)](config-repo/product-service.yml)
 - [Angular development proxy](frontend/proxy.conf.json)
-- [Product Service project](product-service/README.md)
-- [Product Service Flyway migration](product-service/src/main/resources/db/migration/V1__create_product_catalog.sql)
-- [Product migration import preparation](product-service/scripts/migration/README.md)
+- [Product Service project](services/product-service/README.md)
+- [Product Service Flyway migration](services/product-service/src/main/resources/db/migration/V1__create_product_catalog.sql)
+- [Product migration import preparation](services/product-service/scripts/migration/README.md)
 - [Historical migration documents (archival; legacy monolith removed)](docs/migration/README.md)
 

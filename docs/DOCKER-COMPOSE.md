@@ -125,7 +125,7 @@ Configuration lives in:
 
 - `config-repo/application.yml` — shared actuator exposure, `application` metric
   tag, sampling and Zipkin endpoint (export is off by default for the host run).
-- `procurement-service/src/main/resources/application.properties` — Axon Server
+- `services/procurement-service/src/main/resources/application.properties` — Axon Server
   connection settings (the host run uses the in-memory event store).
 - `docker/prometheus.yml` — scrape targets.
 - `docker/promtail-config.yml` — log discovery/parsing.
