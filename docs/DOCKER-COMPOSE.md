@@ -58,6 +58,7 @@ scripts/compose-stack.sh up       # = docker compose up -d --build
 scripts/compose-stack.sh status   # = docker compose ps
 scripts/compose-stack.sh seed     # loads the canonical demo dataset via :8080/api
 scripts/compose-stack.sh urls     # prints all demo URLs
+scripts/compose-stack.sh lb       # verify load balancing between 2 instances
 scripts/compose-stack.sh down     # stop, keep named volumes
 scripts/compose-stack.sh reset    # stop AND delete all data volumes
 ```
@@ -75,6 +76,11 @@ seconds for Eureka/load-balancer caches and rerun the seeder.
 | Gateway API | <http://localhost:8080/api/produits> | — |
 | Eureka | <http://localhost:8761> | — |
 | Product Swagger | <http://localhost:8082/swagger-ui.html> | — |
+| Inventory Swagger | <http://localhost:8083/swagger-ui.html> | — |
+| Supplier Swagger | <http://localhost:8084/swagger-ui.html> | — |
+| User Swagger | <http://localhost:8085/swagger-ui.html> | — |
+| Procurement Swagger | <http://localhost:8086/swagger-ui.html> | — |
+| Payment Swagger | <http://localhost:8087/swagger-ui.html> | — |
 | Grafana | <http://localhost:3000> | `admin` / `admin` |
 | Zipkin | <http://localhost:9411> | — |
 | Axon Server | <http://localhost:8024> | — |
@@ -86,6 +92,39 @@ seconds for Eureka/load-balancer caches and rerun the seeder.
 Set `GRAFANA_USER`, `GRAFANA_PASSWORD`, `DB_USERNAME`, `DB_PASSWORD` in `.env`
 to change the defaults. Do not expose these ports outside your machine: this
 is a development stack with development credentials.
+
+### 4.1 Load-balancing test
+
+The Gateway routes with `lb://<SERVICE>`, so Spring Cloud LoadBalancer spreads
+requests across every instance registered in Eureka. To prove it, scale one
+service and count the requests each replica actually serves:
+
+```bash
+scripts/compose-stack.sh lb                         # product-service x2, 20 GETs
+scripts/compose-stack.sh lb --service inventory-service --requests 40
+scripts/load-balance-check.sh --help                # all options
+```
+
+The helper stops the base stack, restarts it with the [`compose.lb.yml`](../compose.lb.yml)
+overlay (which removes the fixed container names/host ports and enables Tomcat
+access logs), scales the chosen service, waits for Eureka and for the Gateway
+cache to refresh, then sends tagged GET requests through the Gateway. It counts
+the tags in each replica's access log and fails unless at least two replicas
+served traffic. By default it restores the normal single-instance stack; pass
+`--keep` to leave the scaled stack running.
+
+Observed result on this stack (product-service, 20 requests):
+
+```text
+Eureka reports 2 registered instances.
+  achat-product-service-1   10 request(s)
+  achat-product-service-2   10 request(s)
+PASS: traffic reached 2 distinct instances -> load balancing verified.
+```
+
+The base `compose.yaml` deliberately pins container names and host ports for a
+stable demo, which is why scaling requires the overlay. The overlay needs Docker
+Compose >= 2.24 for the `!reset` YAML tag.
 
 ## 5. Tracing, metrics and logs demo
 

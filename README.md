@@ -122,13 +122,21 @@ scripts/compose-stack.sh seed             # load the demo dataset
 scripts/compose-stack.sh quality          # optional: SonarQube + Nexus
 scripts/compose-stack.sh status
 scripts/compose-stack.sh urls
+scripts/compose-stack.sh lb                # prove load balancing between 2 instances
 ```
 
 Demo UIs: Angular `http://localhost:4200`, Eureka `:8761`, Grafana `:3000`,
 Zipkin `:9411`, Axon Server `:8024`, Prometheus `:9090`, SonarQube `:9000` and
-Nexus `:8081`.
+Nexus `:8081`. Each of the six services exposes Swagger UI on its own port at
+`/swagger-ui.html` (see `scripts/compose-stack.sh urls`).
+
 Grafana and SonarQube default to `admin`/`admin`; see the runbook for Nexus
 first-login instructions and for generating a SonarQube token.
+
+A ready-to-import [Postman collection](postman/README.md) covers the main
+Gateway routes, the `stockId` validation and the CQRS command/query flow. The
+`lb` command and the load-balancing overlay are documented in
+[docs/DOCKER-COMPOSE.md](docs/DOCKER-COMPOSE.md#41-load-balancing-test).
 
 ## Start Product Service
 
@@ -159,7 +167,8 @@ Push-Location .\services\product-service
 Flyway creates Product-owned tables in the Product database; it does not
 create the database/account or migrate legacy data. Check
 `http://localhost:8082/actuator/health` and the Eureka dashboard. API docs are
-available at `http://localhost:8082/swagger-ui.html`.
+available at `http://localhost:8082/swagger-ui.html` (the other five services
+expose theirs on ports 8083–8087).
 
 Current Product Service limitations: search is not implemented. Creating a
 product requires a `stockId`: Product Service validates the stock with

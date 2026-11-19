@@ -1,0 +1,191 @@
+{
+  "info": {
+    "name": "Achat Microservices - Gateway API",
+    "description": "Smoke and demo requests for the six services through the API Gateway. Start the stack with scripts/compose-stack.sh up and optionally seed it with scripts/compose-stack.sh seed. Variables are defined at collection level; override them in your own environment for another host.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api" },
+    { "key": "gatewayUrl", "value": "http://localhost:8080" },
+    { "key": "productUrl", "value": "http://localhost:8082" },
+    { "key": "supplierId", "value": "1" },
+    { "key": "productId", "value": "1" },
+    { "key": "stockId", "value": "1" },
+    { "key": "cqrsInvoiceId", "value": "replace-with-id-from-create" },
+    { "key": "startDate", "value": "2026-01-01" },
+    { "key": "endDate", "value": "2026-12-31" }
+  ],
+  "item": [
+    {
+      "name": "00 - Infrastructure",
+      "item": [
+        {
+          "name": "Gateway health",
+          "request": { "method": "GET", "url": "{{gatewayUrl}}/actuator/health" }
+        },
+        {
+          "name": "Eureka dashboard",
+          "request": { "method": "GET", "url": "http://localhost:8761/" }
+        },
+        {
+          "name": "Product Swagger UI",
+          "request": { "method": "GET", "url": "{{productUrl}}/swagger-ui.html" }
+        }
+      ]
+    },
+    {
+      "name": "01 - Catalog",
+      "item": [
+        {
+          "name": "List products",
+          "request": { "method": "GET", "url": "{{baseUrl}}/produits" }
+        },
+        {
+          "name": "Get product by id",
+          "request": { "method": "GET", "url": "{{baseUrl}}/produits/{{productId}}" }
+        },
+        {
+          "name": "List categories",
+          "request": { "method": "GET", "url": "{{baseUrl}}/categories-produits" }
+        },
+        {
+          "name": "Create product without stockId (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nomProduit\": \"No stock\",\n  \"prixUnitaire\": 1.0,\n  \"categorie\": { \"idCategorie\": 1 }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/produits"
+          }
+        },
+        {
+          "name": "Create product with stockId (expect 201)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nomProduit\": \"Postman demo\",\n  \"prixUnitaire\": 12.5,\n  \"stockId\": {{stockId}},\n  \"categorie\": { \"idCategorie\": 1 }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/produits"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Stock",
+      "item": [
+        {
+          "name": "List stocks",
+          "request": { "method": "GET", "url": "{{baseUrl}}/stocks" }
+        },
+        {
+          "name": "Assign product to stock (owned by Inventory)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/produits/{{productId}}/stock/{{stockId}}"
+          }
+        },
+        {
+          "name": "Unassign product from stock",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/produits/{{productId}}/stock"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Suppliers and sectors",
+      "item": [
+        {
+          "name": "List suppliers",
+          "request": { "method": "GET", "url": "{{baseUrl}}/fournisseurs" }
+        },
+        {
+          "name": "Get supplier by id",
+          "request": { "method": "GET", "url": "{{baseUrl}}/fournisseurs/{{supplierId}}" }
+        },
+        {
+          "name": "List activity sectors",
+          "request": { "method": "GET", "url": "{{baseUrl}}/secteurs-activite" }
+        }
+      ]
+    },
+    {
+      "name": "04 - Operators",
+      "item": [
+        {
+          "name": "List operators",
+          "request": { "method": "GET", "url": "{{baseUrl}}/operateurs" }
+        }
+      ]
+    },
+    {
+      "name": "05 - Invoices (legacy routes)",
+      "item": [
+        {
+          "name": "List invoices",
+          "request": { "method": "GET", "url": "{{baseUrl}}/facture/retrieve-all-factures" }
+        }
+      ]
+    },
+    {
+      "name": "06 - CQRS / Axon",
+      "item": [
+        {
+          "name": "List invoices from read model",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cqrs/factures" }
+        },
+        {
+          "name": "Create invoice command (expect 202 with id)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"montantRemise\": 3.0,\n  \"montantFacture\": 33.0,\n  \"dateCreationFacture\": \"2026-06-01\",\n  \"dateDerniereModificationFacture\": \"2026-06-01\",\n  \"fournisseurId\": 1,\n  \"archivee\": false,\n  \"lignes\": [{\n    \"produitId\": 1,\n    \"codeProduit\": \"POSTMAN-1\",\n    \"libelleProduit\": \"Postman product\",\n    \"qteCommandee\": 2,\n    \"pourcentageRemise\": 5,\n    \"montantRemise\": 3.0,\n    \"prixTotalDetail\": 33.0\n  }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/cqrs/factures"
+          }
+        },
+        {
+          "name": "Get invoice by id (query)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cqrs/factures/{{cqrsInvoiceId}}" }
+        },
+        {
+          "name": "Archive invoice (expect 204, then 409)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/cqrs/factures/{{cqrsInvoiceId}}/archive"
+          }
+        },
+        {
+          "name": "Unknown id (expect 404)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cqrs/factures/unknown-id" }
+        }
+      ]
+    },
+    {
+      "name": "07 - Settlements and reporting",
+      "item": [
+        {
+          "name": "List settlements",
+          "request": { "method": "GET", "url": "{{baseUrl}}/reglements" }
+        },
+        {
+          "name": "Recovery rate (legacy route routed to Payment)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/facture/pourcentageRecouvrement/{{startDate}}/{{endDate}}"
+          }
+        }
+      ]
+    }
+  ]
+}

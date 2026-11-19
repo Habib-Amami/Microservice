@@ -62,6 +62,10 @@ scripts/run-stack.sh logs payment-service  # follow one component's log
 | <http://localhost:8082/swagger-ui/index.html> | Product Service Swagger UI |
 | <http://localhost:4200> | Angular UI (only with `--frontend` or `npm start`) |
 
+All six services expose Swagger UI at `/swagger-ui.html` on their own port
+(8082–8087). For a ready-made set of API calls, import the
+[Postman collection](../postman/README.md); it targets the Gateway on `:8080`.
+
 All API traffic goes through the Gateway on **8080** and keeps the `/api`
 prefix. Direct service ports exist but the UI and the seed script only use the
 Gateway.
@@ -370,6 +374,21 @@ retries through Eureka instead of pinning a stale instance.
 ```bash
 cd frontend && npm start
 ```
+
+### 6.10 Load balancing across instances
+
+The `lb://` Gateway routes spread traffic across all Eureka-registered
+instances. To verify this with real replicas (not just the host flow), use the
+Compose overlay described in
+[docs/DOCKER-COMPOSE.md](DOCKER-COMPOSE.md#41-load-balancing-test):
+
+```bash
+scripts/compose-stack.sh lb                       # 2 product replicas, 20 requests
+scripts/compose-stack.sh lb --service inventory-service --requests 40
+```
+
+It reports the Eureka instance count and the per-replica access-log hits, then
+restores the single-instance stack.
 
 Open <http://localhost:4200>. The dev proxy forwards `/api` to the Gateway, so
 every screen you test is exercising the same routes as the curl commands. The

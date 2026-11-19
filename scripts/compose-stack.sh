@@ -19,6 +19,7 @@ Full Docker Compose stack (application + observability):
   scripts/compose-stack.sh down          # stop containers, keep data
   scripts/compose-stack.sh reset         # stop and delete all volumes
   scripts/compose-stack.sh urls          # print the demo URLs
+  scripts/compose-stack.sh lb [opts]     # verify load balancing (see --help)
 
 Any extra arguments are forwarded to docker compose / the seeder.
 EOF
@@ -33,6 +34,7 @@ case "$cmd" in
   status)  docker compose ps "$@" ;;
   seed)    python3 scripts/seed-demo.py "$@" ;;
   logs)    docker compose logs -f "$@" ;;
+  lb)      scripts/load-balance-check.sh "$@" ;;
   down)    docker compose down "$@" ;;
   reset)   docker compose down -v "$@" ;;
   urls)
@@ -40,7 +42,12 @@ case "$cmd" in
 UI / API           http://localhost:4200   Angular app (proxies /api -> gateway)
 Gateway API        http://localhost:8080/api
 Eureka             http://localhost:8761
-Swagger (product)  http://localhost:8082/swagger-ui.html
+Swagger UIs        http://localhost:8082/swagger-ui.html  (Product)
+                   http://localhost:8083/swagger-ui.html  (Inventory)
+                   http://localhost:8084/swagger-ui.html  (Supplier)
+                   http://localhost:8085/swagger-ui.html  (User)
+                   http://localhost:8086/swagger-ui.html  (Procurement)
+                   http://localhost:8087/swagger-ui.html  (Payment)
 Grafana            http://localhost:3000   admin / admin (or .env)
 Zipkin             http://localhost:9411
 Axon Server        http://localhost:8024

@@ -50,6 +50,13 @@ All modules target Java **21**, Spring Boot **4.0.9** and Spring Cloud
 tests. The infrastructure reactor (`infrastructure/`) contains Config Server,
 Discovery Server and API Gateway.
 
+All six services expose Springdoc OpenAPI/Swagger UI at `/swagger-ui.html` on
+ports 8082–8087. A committed [Postman collection](../postman/README.md) covers
+the Gateway routes, the `stockId` validation and the CQRS command/query flow.
+Load balancing between replicas is verified with
+`scripts/compose-stack.sh lb` and the `compose.lb.yml` overlay; see
+[docs/DOCKER-COMPOSE.md](DOCKER-COMPOSE.md#41-load-balancing-test).
+
 ## Config Server and Gateway
 
 Config documents are in `config-repo/`:
@@ -116,7 +123,10 @@ Compose verification: `docker compose config --quiet` passed; 27/27 backend
 smoke checks passed after `scripts/seed-demo.py --force`; all default-profile
 containers healthy; Zipkin listed all nine instrumented services; Axon Server
 contained the `default` context; Resilience4j metrics were exposed on Product's
-`/actuator/metrics`.
+`/actuator/metrics`. The load-balancing check scaled `product-service` to two
+replicas, confirmed 2 Eureka registrations and a 10/10 split of 20 tagged GETs
+across the replicas, then restored the single-instance stack.
+`compose.lb.yml` validated with `docker compose config`.
 
 ## Known gaps and cutover blockers
 

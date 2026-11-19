@@ -1,0 +1,45 @@
+# Overlay used ONLY by scripts/load-balance-check.sh.
+#
+# compose.yaml pins container names and host ports so the normal demo has
+# stable names and URLs. --scale needs both removed; Docker Compose >= 2.24
+# supports the !reset tag. Access logs are enabled so the demo can count the
+# requests each replica actually served.
+#
+#   docker compose -f compose.yaml -f compose.lb.yml up -d --scale product-service=2
+services:
+  product-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /tmp/access
+  inventory-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /tmp/access
+  supplier-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /tmp/access
+  user-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /tmp/access
+  procurement-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /tmp/access
+  payment-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /tmp/access
