@@ -1,157 +1,161 @@
 # Microservices Implementation Status
 
-**Evidence date:** 2026-11-17
+**Evidence date:** 2026-11-19
 
 **Scope:** All six business services are implemented and routed through the
-API Gateway; the legacy monolith has been removed from the repository. Current
-gap work adds Procurement invoice-line snapshots/Product lookup and Payment
-invoice eligibility/recovery reporting. Inventory receiving is deferred pending
-an approved receipt contract.
+API Gateway; the legacy monolith has been removed from the repository. The
+current stack also includes three cross-cutting capabilities:
 
-**Current validation:** Product creation requires a stock; see Product's row
-below. The full stack (Config Server, Eureka, Gateway and six services) is
-started by `scripts/run-stack.sh` and validated by the live Gateway smoke flow
-in [docs/RUN-LOCAL.md](RUN-LOCAL.md).
+- **Resilience4j** on the Product → Inventory calls (retry, rate limiter,
+  circuit breaker and typed fallbacks).
+- **CQRS/Axon** inside Procurement (aggregate, commands, events, projector,
+  REST command/query API, Axon Server in Compose).
+- **Zipkin** distributed tracing, replacing Jaeger, plus Prometheus/Grafana
+  and Loki/Promtail in the default Compose profile.
 
-**Migration/cutover:** No production data was copied. Local route and smoke
-results are not evidence of source-data parity, production readiness, or an
-accepted cutover.
+**Current validation:** 76 Maven tests across seven modules and 6 frontend
+tests pass. The full Compose stack was built and exercised end to end: 27/27
+gateway smoke checks, 10/10 Prometheus targets up, Zipkin receiving spans from
+all nine instrumented services, and the CQRS command/query flow returning
+`202/200/200/204/409/404` as designed. See
+[docs/DOCKER-COMPOSE.md](DOCKER-COMPOSE.md) for the Compose runbook and
+[docs/RUN-LOCAL.md](RUN-LOCAL.md) for the host-based flow.
 
-The target architecture remains in
-[`migration/02-revised-target-architecture.md`](migration/02-revised-target-architecture.md);
-development rules are in
-[`../TEAM-DEVELOPMENT-GUIDE.md`](../TEAM-DEVELOPMENT-GUIDE.md) and
-[`migration/07-microservices-development-standards.md`](migration/07-microservices-development-standards.md).
+**Migration/cutover:** No production data was copied. Local route, Compose and
+smoke results are not evidence of source-data parity, production readiness, or
+an accepted cutover.
+
+The target architecture and standards that still govern unresolved decisions
+are in
+[`migration/02-revised-target-architecture.md`](migration/02-revised-target-architecture.md)
+and [`migration/07-microservices-development-standards.md`](migration/07-microservices-development-standards.md).
+Those documents are a **historical design record**; where they say CQRS/Axon,
+Resilience4j or tracing is "pending" or "proposed", this status page is the
+authoritative current state.
 
 ## Service matrix
 
-| Service | Local port / Eureka ID | Logical database / config database name | Implemented endpoints / scope | Dependencies | Build and test evidence |
+| Service | Local port / Eureka ID | Logical database | Implemented endpoints / scope | Dependencies | Build and test evidence |
 |---|---|---|---|---|---|
-| Product | `8082` / `product-service` | `product_db` (config default and README agree; the earlier `product_service` naming mismatch is resolved) | `GET/POST /produits`, `GET/PUT/DELETE /produits/{id}`, `GET/POST /categories-produits`, `GET/PUT/DELETE /categories-produits/{id}`. `POST /produits` requires `stockId`: Product validates the stock with Inventory, creates the catalog row, and asks Inventory to register the assignment before responding (`404` unknown stock, `503` unreachable Inventory, `400` missing stock). A failed assignment rolls the catalog row back. Stock assignment remains owned by Inventory; Product stores the `stockId` pushed to `PUT /internal/v1/products/{id}/stock` (not routed by the Gateway) as a read projection, so Product responses expose `stockId`. | MySQL + Flyway; Config Client; Eureka Client; Feign/LoadBalancer to Inventory (stock validation + create-time assignment). | `./mvnw -B test` — **25 run, 0 failed, 0 skipped** (unit + MockMvc contract + Testcontainers MySQL migration test). |
-| Inventory | `8083` / `inventory-service` | `inventory_db` | `/stocks/**` CRUD, `PUT /produits/{productId}/stock/{stockId}` and `DELETE /produits/{productId}/stock` (unassign). After saving/clearing an assignment it pushes the `stockId` (or null) to Product Service's internal projection endpoint (best-effort; failures are logged). Stock deletion drops stale assignments for products deleted in Product Service and still returns `409` for live assignments. Advanced inventory positions, movements, reservations, and receiving are not implemented. | MySQL + Flyway; Config Client; Eureka Client; Feign/LoadBalancer to Product (catalog lookup + stock projection). | `./mvnw -B test` — **20 run, 0 failed, 0 skipped**. |
-| Supplier | `8084` / `supplier-service` | `supplier_db` | `/fournisseurs/**`; `/secteurs-activite/**`; supplier/sector CRUD and sector assignment; `GET /internal/v1/suppliers/{supplierId}` reference lookup. | MySQL + Flyway; Config Client; Eureka Client; no outgoing Feign. | `Set-Location supplier-service; .\mvnw.cmd -B clean verify` — **6 run, 0 failed, 0 skipped**; CRUD/reference HTTP routes exercised over embedded H2, with Flyway disabled. |
-| User | `8085` / `user-service` | `user_db` | `/operateurs/**` profile CRUD; `GET /internal/v1/operators/{operatorId}` reference lookup. Password input is stored as an encoded credential verifier and is never returned. `factureIds` remains in the legacy response but is empty (assignments belong to Procurement). | MySQL + Flyway; Config Client; Eureka Client; Spring Security Crypto; no outgoing Feign. No login/JWT/authorization implementation. | `Set-Location user-service; .\mvnw.cmd -B clean verify` — **3 run, 0 failed, 0 skipped**; CRUD/reference HTTP routes exercised over embedded H2, with Flyway disabled. |
-| Procurement | `8086` / `procurement-service` | `procurement_db` | Legacy invoice paths, archive, query by supplier, operator assignment, and typed `detailsFacture` responses. Add accepts optional legacy-shaped lines, looks up Product, calculates line/header amounts, and stores product snapshots. Internal APIs: `GET /internal/v1/invoices/{id}/payment-eligibility`, `GET /internal/v1/invoices/total`. Recovery-rate path is routed to Payment at the Gateway. | MySQL + Flyway V1/V2; Config Client; Eureka Client; Feign/LoadBalancer to Product, Supplier, and User. No Procurement→Payment or Procurement→Inventory call. Remote calls precede local line/header persistence. | `Set-Location procurement-service; .\mvnw.cmd -B clean verify` — **5 run, 0 failed, 0 skipped**; invoice-line persistence/response and missing Product behavior exercised over H2; Feign mocked and Flyway disabled. |
-| Payment | `8087` / `payment-service` | `payment_db` | `/reglements/**` settlement list/detail/create/update/delete, invoice lookup and revenue; writes validate invoice existence/archive state via Procurement. Legacy `/facture/pourcentageRecouvrement/{startDate}/{endDate}` is served by Payment. `GET /internal/v1/settlements/revenue` remains available. | MySQL + Flyway; Config Client; Eureka Client; OpenFeign/LoadBalancer to Procurement for eligibility and active invoice totals. One-way dependency; no Procurement Feign client. | `Set-Location payment-service; .\mvnw.cmd -B clean verify` — **6 run, 0 failed, 0 skipped**; create/update, archived/missing/unavailable invoice handling, and reporting exercised over H2 with Procurement Feign mocked and Flyway disabled. |
+| Product | `8082` / `product-service` | `product_db` | `GET/POST /produits`, `GET/PUT/DELETE /produits/{id}`, `GET/POST /categories-produits`, `GET/PUT/DELETE /categories-produits/{id}`. `POST /produits` requires `stockId` (`400` when missing): Product validates the stock with Inventory, creates the catalog row, then registers the assignment before responding (`404` unknown stock, `503` unavailable Inventory). All Inventory calls go through `InventoryResilienceGateway` (3 attempts/500 ms retry, 5 req/s rate limit, circuit breaker, typed fallback); a failed assignment rolls the catalog row back. Product stores the `stockId` pushed by Inventory as a read projection. | MySQL + Flyway; Config Client; Eureka Client; Feign/LoadBalancer to Inventory through the Resilience4j gateway. | `./mvnw -B -ntp verify` — **31 run, 0 failed**. |
+| Inventory | `8083` / `inventory-service` | `inventory_db` | `/stocks/**` CRUD, `PUT /produits/{productId}/stock/{stockId}` and `DELETE /produits/{productId}/stock` (unassign). After saving/clearing an assignment it pushes the `stockId` (or null) to Product's internal projection endpoint (best-effort; failures are logged). Stock deletion drops stale assignments and still returns `409` for live assignments. Advanced positions, movements, reservations and receiving are not implemented. | MySQL + Flyway; Config Client; Eureka Client; Feign/LoadBalancer to Product. | `./mvnw -B -ntp verify` — **20 run, 0 failed**. |
+| Supplier | `8084` / `supplier-service` | `supplier_db` | `/fournisseurs/**`; `/secteurs-activite/**`; supplier/sector CRUD and sector assignment; `GET /internal/v1/suppliers/{supplierId}` reference lookup. | MySQL + Flyway; Config Client; Eureka Client; no outgoing Feign. | `./mvnw -B -ntp verify` — **6 run, 0 failed**. |
+| User | `8085` / `user-service` | `user_db` | `/operateurs/**` profile CRUD; `GET /internal/v1/operators/{operatorId}` reference lookup. Passwords are stored as encoded verifiers and never returned. `factureIds` remains in the legacy response but is empty. No login/JWT/authorization implementation. | MySQL + Flyway; Config Client; Eureka Client; Spring Security Crypto; no outgoing Feign. | `./mvnw -B -ntp verify` — **3 run, 0 failed**. |
+| Procurement | `8086` / `procurement-service` | `procurement_db` | Legacy invoice paths, archive, query by supplier, operator assignment, product snapshots and typed `detailsFacture` responses. **CQRS API under `/cqrs/factures`** (gateway path `/api/cqrs/factures/**`): `POST` dispatches `CreateInvoiceCommand` → `InvoiceCreatedEvent` → projector → `202 {id}`; `GET` and `GET /{id}` answer `FindAllInvoicesQuery` / `FindInvoiceByIdQuery` from the read model; `PUT /{id}/archive` dispatches `ArchiveInvoiceCommand` → `InvoiceArchivedEvent` (`204`, `409` if already archived, `404` if unknown). Internal APIs: `GET /internal/v1/invoices/{id}/payment-eligibility`, `GET /internal/v1/invoices/total`. Recovery-rate path is routed to Payment at the Gateway. | MySQL + Flyway V1–V4 (V3 projections, V4 Axon JPA tables); Axon Server in Compose (`axon.axonserver.enabled=true`), in-memory store for host/tests; Config Client; Eureka Client; Feign/LoadBalancer to Product, Supplier, User. No Procurement→Payment or Procurement→Inventory call. | `./mvnw -B -ntp verify` — **9 run, 0 failed** (aggregate test + end-to-end CQRS endpoint test + legacy contract/runtime tests). |
+| Payment | `8087` / `payment-service` | `payment_db` | `/reglements/**` settlement list/detail/create/update/delete, invoice lookup and revenue; writes validate invoice existence/archive state via Procurement. Legacy `/facture/pourcentageRecouvrement/{startDate}/{endDate}` is served by Payment. `GET /internal/v1/settlements/revenue` remains available. | MySQL + Flyway; Config Client; Eureka Client; OpenFeign/LoadBalancer to Procurement for eligibility and active invoice totals. One-way dependency. | `./mvnw -B -ntp verify` — **6 run, 0 failed**. |
 
-The four new services all inherit Spring Boot **4.0.9**, target Java **21**,
-and import Spring Cloud **2025.1.4**. Each has an independent Maven POM,
-wrapper, README, `application.properties`, Config Server document, Flyway
-migration(s), and tests; Procurement now includes V2 for invoice lines.
-Spring Cloud 2025.1.4's official reference states its supported Spring Boot
-version is 4.0.9:
-[Spring Cloud 2025.1 reference](https://docs.spring.io/spring-cloud-release/reference/2025.1/index.html).
+All modules target Java **21**, Spring Boot **4.0.9** and Spring Cloud
+**2025.1.4**. Each service has an independent Maven POM, wrapper, README,
+`application.properties`, Config Server document, Flyway migration(s) and
+tests. The infrastructure reactor (`infrastructure/`) contains Config Server,
+Discovery Server and API Gateway.
 
 ## Config Server and Gateway
 
 Config documents are in `config-repo/`:
 
-| Application | Config document | Database/configuration notes |
+| Application | Config document | Notable settings |
 |---|---|---|
-| Product | `product-service.yml` | Database default is `product_db`, matching the revised target architecture. Credentials use environment placeholders. |
-| Inventory | `inventory-service.yml` | `inventory_db`; Product Feign timeouts configured. |
+| Product | `product-service.yml` | `product_db`; Feign connect/read timeouts; `resilience4j.retry` (3 attempts/500 ms), `resilience4j.ratelimiter` (5/1s), `resilience4j.circuitbreaker`. |
+| Inventory | `inventory-service.yml` | `inventory_db`; Product Feign timeouts. |
 | Supplier | `supplier-service.yml` | `supplier_db`; credential values are environment placeholders. |
 | User | `user-service.yml` | `user_db`; credential values are environment placeholders. |
-| Procurement | `procurement-service.yml` | `procurement_db`; Product/Supplier/User Feign connect/read timeouts configured. |
-| Payment | `payment-service.yml` | `payment_db`; Procurement Feign connect/read timeouts configured. |
+| Procurement | `procurement-service.yml` | `procurement_db`; Product/Supplier/User Feign timeouts. `application.properties` adds the Jackson Axon serializer, subscribing `invoiceProjection` processor and Axon Server toggle. |
+| Payment | `payment-service.yml` | `payment_db`; Procurement Feign timeouts. |
+| Shared | `application.yml` | Zipkin exporter (opt-in via `TRACING_EXPORT_ENABLED` + `ZIPKIN_ENDPOINT`) and common health/metrics exposure. |
 
-`config-repo/api-gateway.yml` has explicit routes with `StripPrefix=1` for every
-public legacy path family:
+`config-repo/api-gateway.yml` has explicit routes with `StripPrefix=1`:
 
 | Gateway path / method | Eureka destination |
 |---|---|
 | `/api/stocks/**` | `INVENTORY-SERVICE` |
-| `PUT /api/produits/*/stock/*` | `INVENTORY-SERVICE` |
-| `/api/produits/**` | `PRODUCT-SERVICE` |
-| `/api/categories-produits/**` | `PRODUCT-SERVICE` |
-| `/api/fournisseurs/**` | `SUPPLIER-SERVICE` |
-| `/api/secteurs-activite/**` | `SUPPLIER-SERVICE` |
+| `PUT /api/produits/*/stock/*`, `DELETE /api/produits/*/stock` | `INVENTORY-SERVICE` |
+| `/api/produits/**`, `/api/categories-produits/**` | `PRODUCT-SERVICE` |
+| `/api/cqrs/factures/**` | `PROCUREMENT-SERVICE` |
+| `/api/fournisseurs/**`, `/api/secteurs-activite/**` | `SUPPLIER-SERVICE` |
 | `/api/operateurs/**` | `USER-SERVICE` |
 | `/api/facture/pourcentageRecouvrement/**` (more-specific route) | `PAYMENT-SERVICE` |
 | `/api/facture/**` | `PROCUREMENT-SERVICE` |
 | `/api/reglements/**` | `PAYMENT-SERVICE` |
-| `/api/internal/**` | rejected with `404` (never routed) |
-| any other `/api/**` | `404` (no fallback route) |
+| `/api/internal/**` and any other `/api/**` | rejected with `404` |
 
 Discovery locator remains disabled. Live smoke checks cover all routed path
-families; see [docs/RUN-LOCAL.md](RUN-LOCAL.md). In particular, `/operateurs` has
-no approved authentication policy and Payment APIs lack authorization and
+families; see [docs/RUN-LOCAL.md](RUN-LOCAL.md). In particular, `/operateurs`
+has no approved authentication policy and Payment APIs lack authorization and
 settlement amount-limit/idempotency controls; their routes are not
 production-safe.
 
-## Test Results
+## Observability and event store (Compose)
 
-| Service | Command executed | Passed | Failed | Skipped | Notes |
-|---|---|---:|---:|---:|---|
-| Product | `.\product-service\mvnw.cmd -f .\product-service\pom.xml clean verify` | 11 | 0 | 1 | Skipped Testcontainers/MySQL test; Docker environment unavailable. |
-| Inventory | `.\inventory-service\mvnw.cmd -f .\inventory-service\pom.xml clean verify` | 12 | 0 | 0 | Controller/service suite. |
-| Supplier | `Set-Location supplier-service; .\mvnw.cmd -B clean verify` | 6 | 0 | 0 | Includes CRUD/reference HTTP probes over embedded H2; Flyway disabled in that test. |
-| User | `Set-Location user-service; .\mvnw.cmd -B clean verify` | 3 | 0 | 0 | Includes CRUD/reference HTTP probes over embedded H2; Flyway disabled in that test. |
-| Procurement | `Set-Location procurement-service; .\mvnw.cmd -B clean verify` | 5 | 0 | 0 | Includes invoice-line persistence/response, Product 404 handling, and internal invoice queries over H2; Feign mocked, Flyway disabled. |
-| Payment | `Set-Location payment-service; .\mvnw.cmd -B clean verify` | 6 | 0 | 0 | Includes settlement eligibility failures and legacy recovery-rate route over H2; Procurement Feign mocked, Flyway disabled. |
-| API Gateway | `.\infrastructure\mvnw.cmd -f .\infrastructure\api-gateway\pom.xml -B verify` | 0 | 0 | 0 | Module build passed; no test sources. YAML parses, but no live Gateway/Eureka route probe was run. |
+| Component | Endpoint | Purpose |
+|---|---|---|
+| Zipkin | `:9411` | Spans from Gateway, Config Server, Discovery Server and all six services. |
+| Axon Server | `:8024` UI / `:8124` gRPC | Command/event/query routing for Procurement CQRS; standalone mode creates the `default` context on a fresh data volume. |
+| Prometheus | `:9090` | 10/10 scrape targets up in the validated stack. |
+| Grafana | `:3000` | Dashboards over Prometheus; datasource points at Zipkin for traces. |
+| Loki + Promtail | — | Log aggregation. |
 
-Aggregate: **43 passed, 0 failed, 1 skipped** (44 tests reported). All six
-services have successful `clean verify` evidence; Procurement and Payment were
-rerun for this gap implementation. The changed Gateway, Payment, and
-Procurement YAML files parsed successfully, and `git diff --check` passed.
+The host-based flow in `scripts/run-stack.sh` has no tracing server or Axon
+Server: export is disabled and Procurement uses the in-memory buses.
 
-## Verification boundary
+## Test results
 
-All six standalone projects passed `clean verify` on Java 21. New-service
-embedded endpoint tests start each Spring Boot app on a random local port,
-create/use an isolated H2 database, and probe all implemented business and
-reference HTTP routes. Feign references are mocked, including Product and
-Procurement for the new cross-service calls.
-Those tests disable Flyway and Eureka and tolerate an unavailable Config
-Server; they establish HTTP/JPA wiring, **not** MySQL SQL compatibility,
-Flyway correctness, registry integration, or Config Server startup behavior.
+| Module | Command | Tests |
+|---|---|---:|
+| infrastructure | `./mvnw -B -ntp verify` | 1 |
+| product-service | `./mvnw -B -ntp verify` | 31 |
+| inventory-service | `./mvnw -B -ntp verify` | 20 |
+| supplier-service | `./mvnw -B -ntp verify` | 6 |
+| user-service | `./mvnw -B -ntp verify` | 3 |
+| procurement-service | `./mvnw -B -ntp verify` | 9 |
+| payment-service | `./mvnw -B -ntp verify` | 6 |
+| **Maven total** | | **76 passed** |
+| frontend | `npm ci && npm run build && npm test -- --watch=false` | 6 passed (2 files) |
 
-Product's existing Testcontainers schema test was skipped because no valid
-Docker environment was available. Inventory's suite is controller/service
-focused. No MySQL server was available for executing Procurement's new V2
-migration or validating the Product/Payment Feign clients against live
-providers. The Gateway module compiled, but the Gateway configuration was not
-exercised against a running Eureka/service set. Build output included a
-Flyway community-metadata HTTP 401 warning from Maven Central metadata
-resolution; it did not fail dependency resolution or the builds.
+Compose verification: `docker compose config --quiet` passed; 27/27 backend
+smoke checks passed after `scripts/seed-demo.py --force`; all default-profile
+containers healthy; Zipkin listed all nine instrumented services; Axon Server
+contained the `default` context; Resilience4j metrics were exposed on Product's
+`/actuator/metrics`.
 
 ## Known gaps and cutover blockers
 
 1. **No production data migration:** Source MySQL DDL, physical table/join
-   names, data quality, ID backfill, row-count/relationship/financial
-   reconciliation, source write-freeze, rollback, and deployment secrets are
-   not verified or performed.
-2. **No MySQL schema verification:** Run every service migration, including
-   Procurement V2, on a disposable MySQL database; validate Hibernate
-   mappings and CRUD and test upgrades before any cutover.
-3. **Product database name mismatch — RESOLVED:** Product config and README now both use `product_db`.
-4. **Authentication/authorization:** User login/token issuance, JWT/JWKS,
-   roles/permissions, lockout, service identity, and protected-resource
+   names, data quality, ID backfill, reconciliation, source write-freeze,
+   rollback and deployment secrets are not verified or performed.
+2. **Authentication/authorization:** User login/token issuance, JWT/JWKS,
+   roles/permissions, lockout, service identity and protected-resource
    enforcement do not exist. Do not expose User/Payment or other sensitive
    writes publicly before security approval.
-5. **Procurement completeness:** Invoice-line persistence, typed response
-   mapping, Product lookup, and Product snapshots are implemented for line
-   details submitted to Procurement. Existing legacy invoice-line data has
-   not been migrated. Inventory receiving, approval lifecycle, durable
-   CQRS/Axon persistence, and durable integration facts remain unimplemented.
-6. **Cross-service contract readiness:** Supplier/User/Product and
-   Payment/Procurement calls have caller-side H2 tests with Feign mocked, but
-   lack live provider-consumer integration tests, authentication, and runtime
-   Eureka verification. Procurement→Inventory remains deferred because the
-   Inventory API has no approved receipt/quantity-adjustment contract.
-7. **Payment correctness:** Settlement writes fail closed for missing or
-   archived invoices and when Procurement is unavailable. The eligibility
-   rule does not validate outstanding balance; there is no idempotency key,
-   reconciliation/reversal, durable invoice lifecycle projection, or archived
-   settlement exclusion in revenue. Amounts remain `float`, with no currency
-   policy.
-8. **Supplier performance:** Metrics and projections are not implemented;
-   source facts, definitions, and freshness policies remain undecided.
-9. **Operations/integration:** No deployment manifests, production health
-   checks, service-authenticated Config Server/Eureka, observability, or
-   Gateway runtime contract suite were added.
+3. **Procurement completeness:** CQRS/Axon is implemented for create/archive,
+   but the draft/submit/approve/reject/cancel lifecycle, approval policy,
+   audit trail, purchase-order receiving linkage and migration of legacy
+   invoice-line data are not.
+4. **Retried write lacks an idempotency key:** The Resilience4j gateway retries
+   `assignStock` (a mutating call). It is mitigated by the catalog rollback and
+   Inventory tolerating a stale assignment, but the project standard requires
+   a caller-supplied idempotency key for retryable commands.
+5. **No gateway-level inbound rate limiting:** The rate limiter is client-side
+   on Product → Inventory only; edge protection for all routes is not in place.
+6. **Axon operations undocumented:** Backup, replay, retention, schema
+   evolution and event-store ownership for Axon Server have not been decided
+   or documented. Cross-service durable event publication (outbox/broker)
+   remains an open architecture decision.
+7. **Cross-service contract readiness:** Feign calls have caller-side H2 tests
+   with providers mocked, but lack live provider-consumer contract tests,
+   authentication and runtime Eureka verification. Procurement→Inventory
+   remains deferred because the receipt/quantity-adjustment contract is not
+   approved.
+8. **Payment correctness:** Settlement writes fail closed for
+   missing/archived invoices and when Procurement is unavailable. The
+   eligibility rule does not validate outstanding balance; there is no
+   idempotency key, reconciliation/reversal, durable invoice lifecycle
+   projection or archived-settlement exclusion in revenue. Amounts remain
+   `float`, with no currency policy.
+9. **Supplier performance:** Metrics and projections are not implemented;
+   source facts, definitions and freshness policies remain undecided.
 
-Do not treat green standalone builds or local route configuration as data
-parity, production readiness, service acceptance, or authorization to switch
-the legacy application's authoritative writes to the new services.
+Do not treat green standalone builds, Compose smoke results or local route
+configuration as data parity, production readiness, service acceptance, or
+authorization to switch the legacy application's authoritative writes to the
+new services.

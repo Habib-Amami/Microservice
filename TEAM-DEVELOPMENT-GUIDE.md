@@ -4,10 +4,14 @@
 six business services that now own all purchasing and stock-management
 functionality.
 
-**Repository evidence reviewed:** 2026-11-13. This guide distinguishes
+**Repository evidence reviewed:** 2026-11-19. This guide distinguishes
 approved architecture rules, implementation visible in the repository, and
 decisions/contracts that are still pending. It does not claim that a design
-document makes a feature operational.
+document makes a feature operational. For the live status of cross-cutting work
+(Resilience4j, CQRS/Axon, Zipkin) see
+[docs/MICROSERVICES-IMPLEMENTATION-STATUS.md](docs/MICROSERVICES-IMPLEMENTATION-STATUS.md);
+the historical design records under `docs/migration/` still describe some of
+these items as "proposed" or "pending".
 
 ## Table of contents
 
@@ -39,14 +43,15 @@ supplier invoices as customer orders.
 |---|---|
 | Frontend | `frontend/`, Angular 21; development server defaults to port 4200 and uses relative `/api` URLs. |
 | Infrastructure | Independent Maven reactor in `infrastructure/`: Config Server, Eureka Discovery Server, and API Gateway. Java 21, Spring Boot 4.0.9, Spring Cloud 2025.1.4. |
-| Gateway | Port 8080; explicit `lb://` routes exist for Product, Inventory, Supplier, User, Procurement, and Payment legacy prefixes, including the legacy recovery-rate URL routed to Payment. Unmatched `/api/**` and `/api/internal/**` return `404`; there is no fallback application. Automatic discovery routes remain disabled. Route configuration is not production cutover acceptance. |
+| Gateway | Port 8080; explicit `lb://` routes exist for Product, Inventory, Supplier, User, Procurement, and Payment legacy prefixes, including the legacy recovery-rate URL routed to Payment and `/api/cqrs/factures/**` routed to Procurement's CQRS API. Unmatched `/api/**` and `/api/internal/**` return `404`; there is no fallback application. Automatic discovery routes remain disabled. Route configuration is not production cutover acceptance. |
 | Angular development proxy | `frontend/proxy.conf.json` forwards `/api` unchanged to `http://localhost:8080`; it does not strip `/api`. |
-| Product Service | Standalone `product-service/`, port 8082; Product/Category CRUD, Flyway, Config Client, and Eureka Client. Product stock assignment remains owned by Inventory. |
+| Product Service | Standalone `product-service/`, port 8082; Product/Category CRUD, Flyway, Config Client, and Eureka Client. Inventory calls pass through `InventoryResilienceGateway` (Resilience4j retry, rate limiter, circuit breaker, typed fallbacks). Product stock assignment remains owned by Inventory. |
 | Inventory Service | Standalone `inventory-service/`, port 8083; stock CRUD/product assignment, Feign Product lookup, Flyway, Config Client, and Eureka Client. Advanced positions, movements, reservations, and receiving remain unimplemented. |
 | Supplier Service | Standalone `supplier-service/`, port 8084; supplier/sector CRUD, sector assignment, Procurement lookup, independent Flyway schema, Config Client, and Eureka Client. Performance projections remain unimplemented. |
 | User Service | Standalone `user-service/`, port 8085; operator CRUD and hashed credential storage, independent Flyway schema, Config Client, and Eureka Client. Authentication, tokens, roles/permissions, and authorization remain unimplemented. |
-| Procurement Service | Standalone `procurement-service/`, port 8086; invoice and line persistence, archive, operator assignment, product snapshots, and Feign Product/Supplier/User calls. Payment eligibility/total query endpoints are internal; Procurement does not call Payment. Inventory receiving, approved lifecycle, and Axon persistence remain unimplemented. |
+| Procurement Service | Standalone `procurement-service/`, port 8086; invoice and line persistence, archive, operator assignment, product snapshots, and Feign Product/Supplier/User calls. In-service **CQRS/Axon** is implemented under `/cqrs/factures` (commands, events, projector, Axon Server in Compose). Payment eligibility/total query endpoints are internal; Procurement does not call Payment. Inventory receiving and the approved lifecycle remain unimplemented. |
 | Payment Service | Standalone `payment-service/`, port 8087; settlement CRUD/reporting with scalar invoice IDs, Feign Procurement eligibility/total lookups, and the legacy recovery-rate URL. Invoice eligibility rejects missing/archived invoices; amount-limit policy, idempotency/reconciliation, and auth remain unimplemented. |
+| Cross-cutting | Distributed tracing via **Zipkin** (replacing Jaeger) in all seven Maven modules; **Prometheus/Grafana** and **Loki/Promtail** in the default Compose profile. Host-based `scripts/run-stack.sh` disables trace export and Axon Server. |
 | Legacy source database | The retired monolith used MySQL and Hibernate `ddl-auto=update`; its deployed DDL/data were never verified. Legacy entity-based table names below are historical inferences, not confirmed physical schema. Each current service owns a separate Flyway-managed MySQL database. |
 
 The local frontend path is route-specific:
@@ -135,7 +140,7 @@ Testcontainers/MySQL integration test has not completed in this environment.
 | **Inventory** (`inventory-service`) | Current implementation covers stock CRUD and product assignment; broader positions/movements/reservations/receipts are incomplete. | `Stock` / likely `stock`; new target migration is service-owned. Deployed source model does not prove a per-product quantity model. | Implements legacy `/stocks/**` and Product stock-assignment operation. | Uses Product IDs as values and calls Product through Feign. Procurement receipt/adjustment remains conditional on approval. | Product metadata/pricing, supplier master, invoices, user credentials, settlements. |
 | **Supplier** (`supplier-service`) | Supplier master, details, sectors, and membership. | New target tables: `suppliers`, `supplier_details`, `activity_sectors`, and `supplier_activity_sectors`. | Implements `/fournisseurs/**`, `/secteurs-activite/**`, sector assignment, and `/internal/v1/suppliers/{id}`. | Procurement validates Supplier references through Feign. | Invoices, invoice lines, operators, stock, settlements, performance projections. |
 | **User** (`user-service`) | Operator profile data and encoded credential storage; authentication, roles, and permissions are not yet implemented. | New `operators` table; no source auth/role tables verified. Invoice assignments are Procurement-owned. | Implements `/operateurs/**` and `/internal/v1/operators/{id}`; `factureIds` remains present and empty. | Procurement validates operator references through Feign. No JWT or request authorization is active. | Invoice ownership/workflow, business records, product/inventory/supplier data, settlement history. |
-| **Procurement** (`procurement-service`) | Invoice headers/lines, archive status, local operator assignments, and internal invoice queries; Axon persistence/workflow is pending. | New `invoices`, `invoice_lines`, and `invoice_operator_assignments` tables. No data migration. | Keeps `/facture/**` invoice routes; optional legacy-shaped `detailsFacture` input persists line and Product snapshots. The Gateway sends the recovery-rate URL to Payment. | Feign to Product, Supplier, and User. No Inventory receipt call until a receiving contract is approved; no Payment call. | Supplier master, Product catalog, physical stock, credentials, settlement records. Not a customer-order service. |
+| **Procurement** (`procurement-service`) | Invoice headers/lines, archive status, local operator assignments, internal invoice queries, and an in-service CQRS read model (Axon events/projection). The full draft/submit/approve workflow remains unimplemented. | New `invoices`, `invoice_lines`, `invoice_operator_assignments`, Axon event-store/saga/token tables (Flyway V1–V4). No data migration. | Keeps `/facture/**` invoice routes; optional legacy-shaped `detailsFacture` input persists line and Product snapshots. Adds `/cqrs/factures` command/query API at the Gateway path `/api/cqrs/factures/**`. The Gateway sends the recovery-rate URL to Payment. | Feign to Product, Supplier, and User. No Inventory receipt call until a receiving contract is approved; no Payment call. | Supplier master, Product catalog, physical stock, credentials, settlement records. Not a customer-order service. |
 | **Payment** (`payment-service`) | Settlement tracking, revenue, and recovery-rate reporting; no reconciliation or event consumer yet. | New `settlements` table with scalar `invoice_id`, no cross-service FK. | Implements `/reglements/**`, `/internal/v1/settlements/revenue`, and the legacy recovery-rate path. Settlement writes require scalar `factureId` and validate invoice existence/archive state. | Feign to Procurement for eligibility and invoice totals; Procurement has no Payment Feign client, so the dependency is one-way. | Procurement-owned invoices/workflow, Supplier master, product and stock data. |
 
 Existing mappings and migration implications are summarized in
@@ -157,9 +162,10 @@ hardcode a host, IP, or service port in service client code.
 Do not add RabbitMQ, Kafka, or another cross-service asynchronous messaging
 system. The earlier architecture documents contain event-transport proposals;
 the professor's synchronous REST requirement takes precedence for this
-project's cross-service communication. Procurement's CQRS/Axon requirement
-remains an in-service architecture concern; do not treat Axon or an event bus
-as an approved cross-service transport.
+project's cross-service communication. Procurement's CQRS/Axon implementation
+is an in-service architecture concern (commands/events/projection inside
+`procurement-service`); it is not an approved cross-service transport and must
+not be used to justify an inter-service broker.
 
 ```java
 @FeignClient(name = "product-service")
@@ -216,9 +222,12 @@ contract, and invoice lines provide no approved receiving workflow.
 - No retries by default. Retries must be bounded and limited to transient,
   safe/idempotent operations. Mutating requests require an idempotency key or
   an operation-specific proof that retrying is safe.
-- Circuit breakers/bulkheads (for example, Resilience4j) are **proposed**, not
-  currently implemented or approved as a project-wide dependency. If adopted,
-  they must expose failure rather than return success-shaped fallback data.
+- Circuit breakers/rate limiting/retry are implemented with Resilience4j in
+  `product-service` for its Inventory calls (retry, rate limiter, circuit
+  breaker, typed fallbacks that preserve `404`/`503`). This is a service-local
+  policy, not an approved project-wide standard. Bulkheads and gateway-level
+  inbound rate limiting are still open. Any fallback must expose failure rather
+  than return success-shaped data.
 - Avoid long synchronous chains and reciprocal calls. Consider request
   fan-out limits and total caller deadline; don't hold database transactions
   open while making remote requests.
@@ -716,12 +725,12 @@ design. Agree contracts early so independent implementation can proceed.
 | 3 | Supplier Service extraction | CRUD, sector assignment, internal lookup, V1 schema, and route config implemented; MySQL validation/performance projections remain pending. |
 | 4 | User Service extraction | Operator CRUD and encoded credential storage implemented; auth/token/role policy blocks protected use and production routing. |
 | 5 | Inventory Service extraction | Stock CRUD, Product lookup/assignment, and route config exist; advanced position/movement/reservation/receipt model remains pending. |
-| 6 | Procurement Service extraction | Invoice header/assignment endpoints and Supplier/User/Payment Feign clients implemented; product snapshots, invoice lines, lifecycle, Inventory receipt, and Axon persistence remain pending. |
+| 6 | Procurement Service extraction | Invoice header/assignment endpoints, Supplier/User/Payment Feign clients, product snapshots, invoice lines and in-service CQRS/Axon implemented; full lifecycle and Inventory receipt remain pending. |
 | 7 | Payment Service extraction | Settlement/report APIs implemented; eligibility, archived-invoice projection, reconciliation/idempotency and security remain pending. |
 | 8 | Full inter-service integration | Add only approved synchronous REST clients; validate discovery, failures, deadlines, idempotency, and error propagation. |
 | 9 | Data migration and verification | Requires DBA-approved source schema/snapshot, target schema acceptance, stable ID strategy, reconciliation, and rollback. |
 | 10 | Security and authorization | Approve identity/token/key/service-auth model, then enforce at Gateway and service boundaries. |
-| 11 | Resilience and observability | Set timeout policies; consider resilience/tracing/metrics only with justified, reviewed policy. |
+| 11 | Resilience and observability — PARTIAL | Product→Inventory Resilience4j and Zipkin/Prometheus/Grafana/Loki implemented in the default Compose stack; bulkheads, gateway-level rate limiting and an Axon operations policy remain open. |
 | 12 | End-to-end testing | Angular through proxy/Gateway, migration parity, representative purchasing and settlement workflows. |
 | 13 | Deployment and CI/CD | Provision separate databases/config/secrets, health/readiness, build/test/release and rollback automation. |
 | 14 | Monolith retirement — COMPLETE | All route families are served by the six services; the legacy application was removed from the repository after local validation. |
@@ -760,13 +769,13 @@ Status definitions:
 | Product Service independent CRUD surface | IMPLEMENTED | Standalone POM, Product/Category CRUD code, Config Client/Eureka Client, Flyway V1, health/OpenAPI configuration. Gateway routes exist; data cutover is not implemented. |
 | Product stock assignment / `stockId` compatibility | IMPLEMENTED | `POST /produits` requires `stockId`: Product validates it with Inventory and registers the assignment before returning `201`, rolling back the catalog row on failure. Inventory serves the Gateway assignment route and pushes the resulting id to Product Service's internal projection endpoint; Product responses expose `stockId`. Verified end-to-end (seed + create + reassignment through the Gateway). |
 | Product MySQL schema integration | IMPLEMENTED | Flyway V1/V2 validated against MySQL through the Testcontainers migration test. |
-| Supplier/User/Payment reference DTOs used by Procurement | IMPLEMENTED, provisional | Supplier and User internal lookup APIs and Payment internal revenue query exist; no provider/consumer integration test or production contract approval. Product lookup and Inventory receipt calls are still pending. |
+| Supplier/User/Payment/Product reference DTOs used by Procurement | IMPLEMENTED, provisional | Supplier/User internal lookup, Payment internal revenue query and Product `/produits/{id}` lookup exist; no live provider/consumer contract test or production approval. Inventory receipt remains deferred pending an approved contract. |
 | JWT issuer, claims, key rotation, authorization, service identity | PENDING | No business security design is implemented by infrastructure evidence. |
 | Monetary conversion from legacy `float` | PENDING | `BigDecimal`/`DECIMAL(19,4)` is only a recommendation; Finance/data approval and source DDL required. |
 | Product/category code uniqueness and cross-service delete policy | PENDING | Product currently permits duplicates; local Category FK conflict maps to 409. |
-| Procurement CQRS/Axon implementation details | PENDING | Target architecture assigns CQRS/Axon, but storage/deployment and relationship to REST-only integration need detail. |
-| Resilience4j policies | PROPOSED | No project-wide policies/dependency are currently implemented. |
-| Distributed tracing/monitoring | PROPOSED | Prior architecture depicts observability; implementation/production policy is not established by this guide. |
+| Procurement CQRS/Axon (in-service) | IMPLEMENTED | `procurement-service` has commands, events, aggregate, projector with `@QueryHandler`, REST façade at `/cqrs/factures`, Flyway V3/V4 tables and aggregate/endpoint tests. Axon Server is used in Compose; host/tests use in-memory buses. Backup/replay/retention policy is still open. |
+| Resilience4j policies | IMPLEMENTED, service-local | `product-service` uses retry (3 attempts/500 ms), rate limiter (5 req/s), circuit breaker and typed fallbacks for Inventory calls; metrics exposed. Not a project-wide standard; bulkhead and gateway-level limiting are open. |
+| Distributed tracing/monitoring | IMPLEMENTED | Zipkin replaced Jaeger across all seven Maven modules, plus Prometheus/Grafana and Loki/Promtail in the default Compose profile. Verified with spans from nine instrumented services and 10/10 Prometheus targets. |
 | Local development ports | IMPLEMENTED | Product 8082, Inventory 8083, Supplier 8084, User 8085, Procurement 8086, Payment 8087. Deployment port/network map remains environment-specific. |
 
 ## 14. Contradictions, open decisions, and evidence limits
@@ -782,8 +791,10 @@ Status definitions:
    architecture and older standards discuss event transports, event-driven
    projections, and Saga-like behavior. The explicit synchronous REST-only
    requirement governs cross-service communication in this guide. No broker
-   is to be introduced. Procurement CQRS remains an internal service design
-   requirement pending clarification of implementation details.
+   is to be introduced. Procurement CQRS is implemented *inside* the service
+   with Axon (in-memory for host/tests, Axon Server in Compose); it does not
+   change the synchronous REST rule between services. Axon operational policy
+   (backup, replay, retention, schema evolution) is still open.
 3. **Historical Gateway/proxy documentation vs actual configuration:** the
    baseline and initial platform design describe the old proxy directly to
    the retired monolith on port 8089. The current proxy targets port 8080,
@@ -795,9 +806,10 @@ Status definitions:
    cutover. Product creation requires `stockId`, the legacy assignment route is
    served by Inventory, and the MySQL migration integration test passes.
 5. **Migration tooling:** earlier standards left Flyway/Liquibase selection
-   open. Flyway and V1 migrations now exist in all six business services.
-   The four new migrations have not been executed against MySQL, and none is
-   an instruction to transfer production data.
+   open. Flyway now exists in all six business services; Procurement has V1–V4
+   (V3 projections, V4 Axon event-store tables) and Product has V1/V2 validated
+   against MySQL. Apply all service migrations when provisioning a fresh
+   database; none is an instruction to transfer production data.
 
 ### Decisions and evidence still needed
 
@@ -816,8 +828,9 @@ Status definitions:
 - User authentication/JWT/security contract and authorization matrix.
 - Procurement workflow, invoice eligibility, when/if Inventory is updated,
   and a cycle-free Procurement/Payment call direction.
-- CQRS/Axon persistence/runtime details consistent with the no-asynchronous
-  cross-service communication requirement.
+- Axon Server operational policy: backup, replay, event retention, schema
+  evolution and event-store ownership. In-service CQRS is implemented and does
+  not change the no-asynchronous cross-service communication requirement.
 - Approved CI, branch protection, review thresholds, deployment environment,
   secret manager, port/network assignments, and rollback/cutover procedures.
 

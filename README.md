@@ -220,6 +220,19 @@ Config Server, Eureka, Gateway, actuator endpoints, or development databases
 publicly; production security and deployment configuration require separate
 approval.
 
+## Cleaning generated artifacts
+
+Build output and local run artifacts are gitignored but can grow to over 1 GB.
+Remove them safely (source, docs and service folders are never touched):
+
+```bash
+scripts/clean-generated.sh --dry-run   # preview what would be removed
+scripts/clean-generated.sh             # remove target/, node_modules, dist, .angular, .run artifacts
+```
+
+The next module build / `npm ci` recreates them; Docker Compose builds inside
+the images and does not use these host artifacts.
+
 ## More detailed documentation
 
 - [Team development guide](TEAM-DEVELOPMENT-GUIDE.md)

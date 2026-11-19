@@ -20,6 +20,11 @@ Consequently:
   `404`.
 - Legacy table names and API quirks recorded here were **inferences** from the
   old code. No production data was copied.
+- These documents were written before implementation. Statements that describe
+  CQRS/Axon, Resilience4j, distributed tracing or observability as "pending",
+  "proposed", or "to be implemented" are **stale by design**: they record the
+  original plan, not its current state. They are kept unchanged as a historical
+  record.
 
 For the current system, use:
 
