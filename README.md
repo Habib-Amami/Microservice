@@ -25,7 +25,7 @@ customer e-commerce application.
 > **One-command demo with GUI, tracing, metrics and logs:** [docs/DOCKER-COMPOSE.md](docs/DOCKER-COMPOSE.md)
 >
 > ```bash
-> scripts/compose-stack.sh up      # everything, including Grafana + Jaeger + Loki
+> scripts/compose-stack.sh up      # everything, including Grafana + Zipkin + Axon Server + Loki
 > scripts/compose-stack.sh seed    # canonical demo dataset
 > scripts/compose-stack.sh urls    # all UI URLs
 > ```
@@ -103,8 +103,9 @@ removes it exactly once when forwarding to a service.
 
 For a complete demo, [docs/DOCKER-COMPOSE.md](docs/DOCKER-COMPOSE.md) describes
 the additive Compose stack: MySQL, Config Server, Eureka, Gateway, six services,
-the Angular UI, **Jaeger** (distributed tracing), **Prometheus + Grafana**
-(metrics dashboard) and **Loki + Promtail** (logs). SonarQube and Nexus are
+the Angular UI, **Zipkin** (distributed tracing), **Axon Server** (CQRS event
+store), **Prometheus + Grafana** (metrics dashboard) and **Loki + Promtail**
+(logs). SonarQube and Nexus are
 available behind the `quality` profile, with `scripts/sonar-scan.sh` and
 `scripts/publish-nexus.sh` for analysis and snapshot publishing.
 
@@ -119,7 +120,8 @@ scripts/compose-stack.sh urls
 ```
 
 Demo UIs: Angular `http://localhost:4200`, Eureka `:8761`, Grafana `:3000`,
-Jaeger `:16686`, Prometheus `:9090`, SonarQube `:9000` and Nexus `:8081`.
+Zipkin `:9411`, Axon Server `:8024`, Prometheus `:9090`, SonarQube `:9000` and
+Nexus `:8081`.
 Grafana and SonarQube default to `admin`/`admin`; see the runbook for Nexus
 first-login instructions and for generating a SonarQube token.
 

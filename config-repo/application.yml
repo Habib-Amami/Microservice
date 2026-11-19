@@ -8,9 +8,9 @@ platform:
 # Gateway and the six business services). Service-specific files extend the
 # health configuration but keep the same endpoint exposure list.
 #
-# The OTLP exporter is opt-in: the host-based run (scripts/run-stack.sh) has no
-# Jaeger instance, so tracing export is off by default. docker compose.yaml
-# sets OTEL_TRACING_EXPORT_ENABLED=true and points the exporter at Jaeger.
+# The Zipkin exporter is opt-in: the host-based run (scripts/run-stack.sh) has
+# no tracing server, so export is off by default. docker compose.yaml sets
+# TRACING_EXPORT_ENABLED=true and points the exporter at the Zipkin container.
 management:
   endpoints:
     web:
@@ -28,18 +28,10 @@ management:
     metrics:
       export:
         enabled: false
-  # Spring Boot 4 renamed the OTLP tracing properties. The old
-  # management.otlp.tracing.* keys are deprecated at ERROR level and, more
-  # importantly, no longer create the ConnectionDetails bean that wires the
-  # OTLP HttpSpanExporter, so spans were silently dropped.
-  opentelemetry:
-    tracing:
-      export:
-        otlp:
-          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   tracing:
     export:
-      otlp:
-        enabled: ${OTEL_TRACING_EXPORT_ENABLED:false}
+      enabled: ${TRACING_EXPORT_ENABLED:false}
+      zipkin:
+        endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
     sampling:
       probability: ${TRACING_SAMPLING_PROBABILITY:1.0}

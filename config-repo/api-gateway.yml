@@ -96,6 +96,15 @@ spring:
               filters:
                 - StripPrefix=1
 
+            # CQRS/Axon API (commands and queries) for procurement invoices.
+            - id: procurement-cqrs-service
+              order: -2
+              uri: lb://PROCUREMENT-SERVICE
+              predicates:
+                - Path=/api/cqrs/factures/**
+              filters:
+                - StripPrefix=1
+
             - id: payment-service
               order: -2
               uri: lb://PAYMENT-SERVICE

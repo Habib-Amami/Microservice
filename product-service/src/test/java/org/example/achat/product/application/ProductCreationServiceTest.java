@@ -1,17 +1,11 @@
 package org.example.achat.product.application;
 
-import feign.FeignException;
-import feign.Request;
-import feign.Response;
 import org.example.achat.product.api.dto.ProductCreateRequest;
 import org.example.achat.product.api.dto.ProductResponse;
-import org.example.achat.product.infrastructure.inventory.InventoryClient;
+import org.example.achat.product.infrastructure.inventory.InventoryResilienceGateway;
 import org.example.achat.product.infrastructure.inventory.dto.StockResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
-
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,29 +20,11 @@ import static org.mockito.Mockito.when;
 class ProductCreationServiceTest {
 
     private final ProductApplicationService products = mock(ProductApplicationService.class);
-    private final InventoryClient inventory = mock(InventoryClient.class);
+    private final InventoryResilienceGateway inventory = mock(InventoryResilienceGateway.class);
     private final ProductCreationService service = new ProductCreationService(products, inventory);
 
     private static ProductCreateRequest request(Long stockId) {
         return new ProductCreateRequest("P-1", "Pen", 1.5f, null, null, null, stockId);
-    }
-
-    private static FeignException inventoryError(int status) {
-        Request request = Request.create(
-                Request.HttpMethod.GET,
-                "http://inventory-service/stocks/3",
-                Map.of(),
-                null,
-                StandardCharsets.UTF_8,
-                null);
-        Response response = Response.builder()
-                .status(status)
-                .reason(status == 404 ? "Not Found" : "Unavailable")
-                .request(request)
-                .headers(Map.of())
-                .body(new byte[0])
-                .build();
-        return FeignException.errorStatus("inventory call", response);
     }
 
     @Test
@@ -70,7 +46,7 @@ class ProductCreationServiceTest {
 
     @Test
     void unknownStockIsRejectedWithoutCreatingAProduct() {
-        when(inventory.getStock(404L)).thenThrow(inventoryError(404));
+        when(inventory.getStock(404L)).thenThrow(new StockNotFoundException(404L));
 
         assertThatThrownBy(() -> service.create(request(404L)))
                 .isInstanceOf(StockNotFoundException.class)
@@ -81,7 +57,8 @@ class ProductCreationServiceTest {
 
     @Test
     void unavailableInventoryDoesNotCreateAProduct() {
-        when(inventory.getStock(3L)).thenThrow(inventoryError(503));
+        when(inventory.getStock(3L))
+                .thenThrow(new InventoryServiceUnavailableException("inventory-service is down"));
 
         assertThatThrownBy(() -> service.create(request(3L)))
                 .isInstanceOf(InventoryServiceUnavailableException.class);
@@ -93,7 +70,8 @@ class ProductCreationServiceTest {
         ProductResponse created = new ProductResponse(8L, "P-1", "Pen", 1.5f, null, null);
         when(inventory.getStock(3L)).thenReturn(new StockResponse(3L, "Main warehouse", 10, 2));
         when(products.create(any())).thenReturn(created);
-        when(inventory.assignStock(8L, 3L)).thenThrow(inventoryError(503));
+        when(inventory.assignStock(8L, 3L))
+                .thenThrow(new InventoryServiceUnavailableException("assignment failed"));
 
         assertThatThrownBy(() -> service.create(request(3L)))
                 .isInstanceOf(InventoryServiceUnavailableException.class);

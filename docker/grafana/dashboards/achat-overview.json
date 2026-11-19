@@ -1,7 +1,7 @@
 {
   "uid": "achat-overview",
   "title": "Achat - microservices overview",
-  "description": "Live request, latency, JVM and log panels for the Achat stack. Traces are in Jaeger (datasource link).",
+  "description": "Live request, latency, JVM and log panels for the Achat stack. Traces are in Zipkin (datasource link).",
   "tags": [
     "achat",
     "microservices",
@@ -21,8 +21,8 @@
     {
       "type": "link",
       "icon": "external link",
-      "title": "Open Jaeger traces (host :16686)",
-      "url": "http://localhost:16686",
+      "title": "Open Zipkin traces (host :9411)",
+      "url": "http://localhost:9411",
       "targetBlank": true
     }
   ],

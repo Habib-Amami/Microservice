@@ -15,7 +15,8 @@ still valid.
 | Platform | Config Server, Eureka, API Gateway |
 | Business | product, inventory, supplier, user, procurement, payment |
 | UI | Angular app served by Nginx on port 4200, proxying `/api` to the Gateway |
-| Tracing | Jaeger (OTLP/HTTP on 4318, UI on 16686) |
+| Tracing | Zipkin (spans posted to `/api/v2/spans`, UI on 9411) |
+| Event store | Axon Server (gRPC on 8124, admin UI on 8024) for procurement CQRS |
 | Metrics | Prometheus scraping all nine `/actuator/prometheus` endpoints |
 | Logs | Loki + Promtail tailing the Docker JSON log files |
 | Dashboards | Grafana with a pre-provisioned "Achat - microservices overview" dashboard |
@@ -75,7 +76,8 @@ seconds for Eureka/load-balancer caches and rerun the seeder.
 | Eureka | <http://localhost:8761> | — |
 | Product Swagger | <http://localhost:8082/swagger-ui.html> | — |
 | Grafana | <http://localhost:3000> | `admin` / `admin` |
-| Jaeger | <http://localhost:16686> | — |
+| Zipkin | <http://localhost:9411> | — |
+| Axon Server | <http://localhost:8024> | — |
 | Prometheus | <http://localhost:9090> | — |
 | SonarQube (quality) | <http://localhost:9000> | `admin` / `admin` |
 | Nexus (quality) | <http://localhost:8081> | `admin`, see below |
@@ -97,18 +99,22 @@ is a development stack with development credentials.
 2. **Grafana** — log in, open **Dashboards → Achat → Achat - microservices
    overview**. You get request rate by service, p95 latency, JVM heap, 5xx
    rate, status breakdown and the Loki log panel. The dashboard link in the
-   header opens Jaeger.
+   header opens Zipkin.
 
-3. **Jaeger** — pick a service (for example `api-gateway`) and **Find Traces**.
-   Spans propagate across the Gateway, Feign calls and the six services because
-   `micrometer-tracing-bridge-otel` plus the OTLP exporter are on every
-   classpath and 100% sampling is enabled in Compose.
+3. **Zipkin** — choose a service (for example `api-gateway`) and click
+   **Find Traces**. Spans propagate across the Gateway, Feign calls and the six
+   services because `spring-boot-starter-zipkin` (Brave bridge + Zipkin
+   reporter) is on every classpath and 100% sampling is enabled in Compose.
 
-4. **Prometheus** — <http://localhost:9090/graph> and query
+4. **Axon Server** — open <http://localhost:8024> to see the
+   `procurement-service` client, its command handlers and the events produced
+   by the CQRS endpoints (`POST /api/cqrs/factures`).
+
+5. **Prometheus** — <http://localhost:9090/graph> and query
    `sum by (application) (rate(http_server_requests_seconds_count[1m]))` or
    `up{job="spring-boot"}`. All nine targets should be `UP`.
 
-5. **Loki logs** — in the Grafana dashboard's log panel, filter by container ID
+6. **Loki logs** — in the Grafana dashboard's log panel, filter by container ID
    or search for a request. Promtail reads
    `/var/lib/docker/containers/*/*-json.log`, so this works on a Linux Docker
    host; on Docker Desktop those files live inside the VM and a different log
@@ -118,7 +124,9 @@ is a development stack with development credentials.
 Configuration lives in:
 
 - `config-repo/application.yml` — shared actuator exposure, `application` metric
-  tag, sampling and OTLP endpoint (export is off by default for the host run).
+  tag, sampling and Zipkin endpoint (export is off by default for the host run).
+- `procurement-service/src/main/resources/application.properties` — Axon Server
+  connection settings (the host run uses the in-memory event store).
 - `docker/prometheus.yml` — scrape targets.
 - `docker/promtail-config.yml` — log discovery/parsing.
 - `docker/grafana/` — datasources, dashboard provider and dashboard JSON.
@@ -172,7 +180,7 @@ scripts/compose-stack.sh quality   # = docker compose --profile quality up -d
 | Gateway returns 503 for a route | Wait for Eureka registration; `docker compose ps` and the Eureka dashboard show registration state. |
 | No metrics in Grafana | `curl -s localhost:8080/actuator/prometheus | head` and check Prometheus → Status → Targets. |
 | No logs in Loki | Confirm Promtail is running and can read `/var/lib/docker/containers` (rootless Docker and Docker Desktop need a different client). |
-| No traces in Jaeger | `docker compose logs api-gateway | grep -i otlp`; Compose sets `OTEL_TRACING_EXPORT_ENABLED=true` and the endpoint `http://jaeger:4318`. |
+| No traces in Zipkin | `docker compose logs api-gateway | grep -i zipkin`; Compose sets `TRACING_EXPORT_ENABLED=true` and `ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans`. |
 | SonarQube exits during startup | Set `vm.max_map_count=262144` and allow ~2 GB RAM. |
 | Nexus deploy returns 401 | Use the password from `/nexus-data/admin.password` after completing the first-login wizard. |
 
@@ -185,4 +193,4 @@ scripts/compose-stack.sh quality   # = docker compose --profile quality up -d
 | Frontend | `ng serve` on 4200 | Nginx-served production build on 4200 |
 | Config | `config-repo/` relative path | read-only bind mount at `/config-repo` |
 | Service URLs | `localhost` | container DNS names (`mysql`, `config-server`, …) |
-| Observability | Prometheus endpoint only | Jaeger + Prometheus + Loki + Grafana |
+| Observability | Prometheus endpoint only | Zipkin + Axon Server + Prometheus + Loki + Grafana |

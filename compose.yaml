@@ -3,8 +3,9 @@
 #   python3 scripts/seed-demo.py
 #   docker compose --profile quality up -d   # optional SonarQube + Nexus
 #
-# Observability (Jaeger, Prometheus, Loki/Promtail, Grafana) is part of the
-# default profile so a plain `docker compose up -d` produces a complete demo.
+# Observability (Zipkin, Prometheus, Loki/Promtail, Grafana) and the Axon
+# Server event store are part of the default profile so a plain
+# `docker compose up -d` produces a complete demo.
 # The heavyweight quality tools are opt-in via the `quality` profile.
 # The host-based flow in scripts/run-stack.sh is unchanged; stop it first
 # because the published ports are the same.
@@ -16,8 +17,8 @@ x-java-build: &java-build
   dockerfile: docker/Dockerfile.java
 
 x-observability-env: &observability-env
-  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
-  OTEL_TRACING_EXPORT_ENABLED: "true"
+  ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+  TRACING_EXPORT_ENABLED: "true"
 
 services:
   # ---------------------------------------------------------------- storage
@@ -37,6 +38,24 @@ services:
       timeout: 5s
       retries: 30
       start_period: 20s
+    networks: [achat]
+
+  # --------------------------------------------------------------- event store
+  axon-server:
+    image: axoniq/axonserver:2026.1.8
+    container_name: achat-axon-server
+    environment:
+      AXONIQ_AXONSERVER_NAME: achat-axon-server
+      AXONIQ_AXONSERVER_HOSTNAME: axon-server
+      # Axon Server 2026.x no longer creates a "default" context on a fresh
+      # data directory. Standalone mode creates it automatically so clients
+      # using the default context can connect out of the box.
+      AXONIQ_AXONSERVER_STANDALONE: "true"
+    ports:
+      - "8024:8024" # Admin UI / REST API
+      - "8124:8124" # gRPC (commands and events)
+    volumes:
+      - axon-server-data:/data
     networks: [achat]
 
   # ---------------------------------------------------------- infrastructure
@@ -251,6 +270,8 @@ services:
       PROCUREMENT_DB_URL: "jdbc:mysql://mysql:3306/procurement_db?createDatabaseIfNotExist=true&serverTimezone=UTC"
       PROCUREMENT_DB_USERNAME: ${DB_USERNAME:-root}
       PROCUREMENT_DB_PASSWORD: ${DB_PASSWORD:-root}
+      AXON_AXONSERVER_ENABLED: "true"
+      AXON_AXONSERVER_SERVERS: axon-server:8124
     ports:
       - "8086:8086"
     healthcheck:
@@ -266,6 +287,8 @@ services:
         condition: service_healthy
       discovery-server:
         condition: service_healthy
+      axon-server:
+        condition: service_started
     networks: [achat]
 
   payment-service:
@@ -317,15 +340,11 @@ services:
     networks: [achat]
 
   # ------------------------------------------------------------ observability
-  jaeger:
-    image: jaegertracing/all-in-one:1.76.0
-    container_name: achat-jaeger
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+  zipkin:
+    image: openzipkin/zipkin:3.6
+    container_name: achat-zipkin
     ports:
-      - "16686:16686" # Jaeger UI
-      - "4318:4318"   # OTLP/HTTP (used by the Spring Boot exporters)
-      - "4317:4317"   # OTLP/gRPC (available for other clients)
+      - "9411:9411" # Zipkin UI + /api/v2/spans collector
     networks: [achat]
 
   prometheus:
@@ -381,7 +400,7 @@ services:
     depends_on:
       - prometheus
       - loki
-      - jaeger
+      - zipkin
     networks: [achat]
 
   # --------------------------------------------- optional quality profile
@@ -432,6 +451,7 @@ services:
 
 volumes:
   mysql-data:
+  axon-server-data:
   prometheus-data:
   loki-data:
   grafana-data:

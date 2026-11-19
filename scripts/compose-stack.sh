@@ -42,7 +42,8 @@ Gateway API        http://localhost:8080/api
 Eureka             http://localhost:8761
 Swagger (product)  http://localhost:8082/swagger-ui.html
 Grafana            http://localhost:3000   admin / admin (or .env)
-Jaeger             http://localhost:16686
+Zipkin             http://localhost:9411
+Axon Server        http://localhost:8024
 Prometheus         http://localhost:9090
 SonarQube          http://localhost:9000   (quality profile)
 Nexus              http://localhost:8081   (quality profile)

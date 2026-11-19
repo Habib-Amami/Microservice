@@ -16,9 +16,9 @@ datasources:
     url: http://loki:3100
     editable: true
 
-  - name: Jaeger
-    type: jaeger
-    uid: jaeger
+  - name: Zipkin
+    type: zipkin
+    uid: zipkin
     access: proxy
-    url: http://jaeger:16686
+    url: http://zipkin:9411
     editable: true
