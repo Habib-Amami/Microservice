@@ -23,7 +23,10 @@ in a one-second window and rejected the next 10 with `429` and `X-RateLimit-*`
 headers; the inventory idempotency flow replayed a repeated key and returned
 `409` for a conflicting reuse. See
 [docs/DOCKER-COMPOSE.md](DOCKER-COMPOSE.md) for the Compose runbook and
-[docs/RUN-LOCAL.md](RUN-LOCAL.md) for the host-based flow.
+[docs/RUN-LOCAL.md](RUN-LOCAL.md) for the host-based flow. Axon Server backup,
+restore, replay, retention, schema-evolution, token/DLQ, store-ownership and
+no-outbox policies are recorded in
+[docs/AXON-OPERATIONS.md](AXON-OPERATIONS.md).
 
 **Migration/cutover:** No production data was copied. Local route, Compose and
 smoke results are not evidence of source-data parity, production readiness, or
@@ -147,7 +150,10 @@ Additional checks after the hardening work: 30 rapid gateway requests yielded
 20 `200` + 10 `429` with `X-RateLimit-Limit: 20`; a product creation wrote a UUID
 row to `inventory_db.assignment_idempotency_keys`; replaying the same key on
 `PUT /produits/{id}/stock/{stockId}` returned `200` without a new row, and
-reusing it for another stock returned `409`.
+reusing it for another stock returned `409`. The Axon Server volume map was
+corrected to persist its control DB, events and raft log in named volumes;
+the existing event history was preserved and `GET /api/cqrs/factures` still
+returned the five projected invoices.
 
 ## Known gaps and cutover blockers
 
@@ -162,22 +168,18 @@ reusing it for another stock returned `409`.
    but the draft/submit/approve/reject/cancel lifecycle, approval policy,
    audit trail, purchase-order receiving linkage and migration of legacy
    invoice-line data are not.
-4. **Axon operations undocumented:** Backup, replay, retention, schema
-   evolution and event-store ownership for Axon Server have not been decided
-   or documented. Cross-service durable event publication (outbox/broker)
-   remains an open architecture decision.
-5. **Cross-service contract readiness:** Feign calls have caller-side H2 tests
+4. **Cross-service contract readiness:** Feign calls have caller-side H2 tests
    with providers mocked, but lack live provider-consumer contract tests,
    authentication and runtime Eureka verification. Procurement→Inventory
    remains deferred because the receipt/quantity-adjustment contract is not
    approved.
-6. **Payment correctness:** Settlement writes fail closed for
+5. **Payment correctness:** Settlement writes fail closed for
    missing/archived invoices and when Procurement is unavailable. The
    eligibility rule does not validate outstanding balance; there is no
    idempotency key, reconciliation/reversal, durable invoice lifecycle
    projection or archived-settlement exclusion in revenue. Amounts remain
    `float`, with no currency policy.
-7. **Supplier performance:** Metrics and projections are not implemented;
+6. **Supplier performance:** Metrics and projections are not implemented;
    source facts, definitions and freshness policies remain undecided.
 
 Do not treat green standalone builds, Compose smoke results or local route

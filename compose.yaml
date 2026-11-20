@@ -51,11 +51,21 @@ services:
       # data directory. Standalone mode creates it automatically so clients
       # using the default context can connect out of the box.
       AXONIQ_AXONSERVER_STANDALONE: "true"
+      # API-created control DB backups land in the named data volume instead
+      # of the container's working directory, so they survive `compose down`.
+      AXONIQ_AXONSERVER_CONTROLDB_BACKUP_LOCATION: /axonserver/data
     ports:
       - "8024:8024" # Admin UI / REST API
       - "8124:8124" # gRPC (commands and events)
     volumes:
-      - axon-server-data:/data
+      # These are the paths this image actually uses (see
+      # /axonserver/axonserver.properties in the container). The former
+      # /data mount was unused by Axon Server itself.
+      - axon-server-config:/axonserver/config
+      - axon-server-data:/axonserver/data
+      - axon-server-events:/axonserver/events
+      - axon-server-log:/axonserver/log
+      - axon-server-transformation:/axonserver/transformation
     networks: [achat]
 
   # ---------------------------------------------------------- infrastructure
@@ -451,7 +461,11 @@ services:
 
 volumes:
   mysql-data:
+  axon-server-config:
   axon-server-data:
+  axon-server-events:
+  axon-server-log:
+  axon-server-transformation:
   prometheus-data:
   loki-data:
   grafana-data:

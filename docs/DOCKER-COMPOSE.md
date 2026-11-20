@@ -162,6 +162,16 @@ curl -i -X PUT http://localhost:8083/produits/1/stock/2 \
   -H 'Idempotency-Key: demo-key-123'   # conflict: 409
 ```
 
+### 4.3 Axon Server state
+
+Axon Server stores its control DB, event/snapshot segments and raft log in the
+named volumes `achat_axon-server-data`, `achat_axon-server-events` and
+`achat_axon-server-log` (mounted at `/axonserver/data`, `/axonserver/events`
+and `/axonserver/log`). `scripts/compose-stack.sh down` preserves them;
+`reset` deletes them. The `default` context is non-DCB, so the `/v2/backup`
+endpoint does not apply. Backup, restore, replay, retention and schema-evolution
+procedures are in [docs/AXON-OPERATIONS.md](AXON-OPERATIONS.md).
+
 ## 5. Tracing, metrics and logs demo
 
 1. Generate traffic: open the UI at <http://localhost:4200>, click through the
@@ -183,7 +193,8 @@ curl -i -X PUT http://localhost:8083/produits/1/stock/2 \
 
 4. **Axon Server** — open <http://localhost:8024> to see the
    `procurement-service` client, its command handlers and the events produced
-   by the CQRS endpoints (`POST /api/cqrs/factures`).
+   by the CQRS endpoints (`POST /api/cqrs/factures`). Operational procedures
+   are in [docs/AXON-OPERATIONS.md](AXON-OPERATIONS.md).
 
 5. **Prometheus** — <http://localhost:9090/graph> and query
    `sum by (application) (rate(http_server_requests_seconds_count[1m]))` or

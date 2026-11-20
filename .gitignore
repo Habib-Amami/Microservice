@@ -20,3 +20,6 @@ __pycache__/
 
 # Local run artifacts (scripts/run-stack.sh)
 .run/
+
+# Local operational backups (see docs/AXON-OPERATIONS.md)
+backups/

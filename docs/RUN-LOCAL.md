@@ -139,6 +139,12 @@ PAYMENT_DB_URL="$DB/payment_db?createDatabaseIfNotExist=true&serverTimezone=UTC"
 PAYMENT_DB_USERNAME=root PAYMENT_DB_PASSWORD=root ./mvnw spring-boot:run
 ```
 
+The host run leaves `AXON_AXONSERVER_ENABLED=false`: Procurement uses the
+embedded Axon store backed by the Flyway V4 tables in `procurement_db`, not the
+Compose Axon Server. Events created here are not visible in Axon Server. See
+[docs/AXON-OPERATIONS.md](AXON-OPERATIONS.md) before switching modes or backing
+up one of the two stores.
+
 Optional UI:
 
 ```bash
